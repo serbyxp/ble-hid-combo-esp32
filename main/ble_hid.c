@@ -10,7 +10,6 @@
 #include "host/ble_sm.h"
 #include "store/config/ble_store_config.h"
 #include "host/ble_store.h"
-#include "host/ble_store_util.h"
 #include "host/ble_gap.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
@@ -18,8 +17,8 @@
 #include <string.h>
 #include <limits.h>
 
-/* NimBLE bond store helpers are not publicly declared in recent headers */
 extern void ble_store_config_init(void);
+extern int ble_store_util_delete_peer(const ble_addr_t *peer_addr);
 
 static const char *TAG = "ble_hid";
 // Store device name for host task (avoid nested functions / trampolines)
@@ -165,40 +164,18 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
-        .characteristics = (struct ble_gatt_chr_def[]) {
+        .characteristics = (struct ble_gatt_chr_def[]){
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
             {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_mouse_cb, .flags = BLE_GATT_CHR_F_READ},
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((1) | (REPORT_TYPE_INPUT << 8))}, {0}}},
             {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
-            {0}
-        }
-    },
+            {0}}},
     // Keyboard HID service (RID=2)
-    {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_INPUT << 8))}, {0}}},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_OUTPUT << 8))}, {0}}},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
-            {0}
-        }
-    },
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC}, {0}}},
     // Battery Service
-    {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE),
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL), .access_cb = chr_access_cb, .val_handle = &h_batt, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY},
-            {0}
-        }
-    },
-    {0}
-};
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL), .access_cb = chr_access_cb, .val_handle = &h_batt, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY}, {0}}},
+    {0}};
 
 static int gap_event(struct ble_gap_event *event, void *arg)
 {
@@ -243,13 +220,29 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_ENC_CHANGE:
         ESP_LOGI(TAG, "Encryption change status=%d", event->enc_change.status);
         break;
-    case BLE_GAP_EVENT_AUTH_COMPLETE:
-        ESP_LOGI(TAG, "Authentication complete status=%d", event->auth_complete.status);
-        break;
     case BLE_GAP_EVENT_REPEAT_PAIRING:
+    {
         ESP_LOGW(TAG, "Repeat pairing - deleting old bond");
-        ble_store_util_delete_peer(&event->repeat_pairing.cur_peer_addr);
+        ble_addr_t peer_addr = {0};
+        bool have_peer = false;
+
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0)
+        {
+            peer_addr = desc.peer_id_addr;
+            have_peer = true;
+        }
+
+        if (have_peer)
+        {
+            ble_store_util_delete_peer(&peer_addr);
+        }
+        else
+        {
+            ble_store_util_delete_oldest_peer();
+        }
         return BLE_GAP_REPEAT_PAIRING_RETRY;
+    }
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(TAG, "MTU updated: %d", event->mtu.value);
         break;
@@ -271,13 +264,13 @@ static int start_advertising(const char *name)
     advp.conn_mode = BLE_GAP_CONN_MODE_UND;
     advp.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
-    ble_uuid16_t svc = { .u={ .type=BLE_UUID_TYPE_16 }, .value=UUID16_HID_SERVICE };
+    ble_uuid16_t svc = {.u = {.type = BLE_UUID_TYPE_16}, .value = UUID16_HID_SERVICE};
     struct ble_hs_adv_fields fields;
-    memset(&fields,0,sizeof(fields));
+    memset(&fields, 0, sizeof(fields));
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.appearance = APPEARANCE_MOUSE;
     fields.appearance_is_present = 1;
-    fields.name = (uint8_t*)name;
+    fields.name = (uint8_t *)name;
     fields.name_len = strlen(name);
     fields.name_is_complete = 1;
     fields.uuids16 = &svc;

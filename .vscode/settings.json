@@ -3,7 +3,13 @@
     "files.associations": {
         "vector": "cpp",
         "nimble_port.h": "c",
-        "ble_sm.h": "c"
+        "ble_sm.h": "c",
+        "ble_gap.h": "c",
+        "ble_store.h": "c",
+        "esp_log.h": "c",
+        "ble_svc_gatt.h": "c",
+        "ble_svc_gap.h": "c",
+        "ble_store_config.h": "c"
     },
     "idf.port": "/dev/ttyUSB0",
     "idf.portWin": "COM3",
