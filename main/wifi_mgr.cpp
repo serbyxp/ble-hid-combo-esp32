@@ -379,12 +379,16 @@ std::vector<scan_result_t> wifi_scan(){
     }
 
     bool changed_mode = false;
+    bool promoted_ap_for_scan = false;
     if (desired_mode != prev_mode) {
         esp_err_t mr = esp_wifi_set_mode(desired_mode);
         if (mr != ESP_OK) {
             ESP_LOGW(TAG, "wifi_scan: esp_wifi_set_mode(%d) -> %d", desired_mode, mr);
         } else {
             changed_mode = true;
+            if (prev_mode == WIFI_MODE_AP && desired_mode == WIFI_MODE_APSTA) {
+                promoted_ap_for_scan = true;
+            }
         }
     }
 
@@ -426,7 +430,9 @@ std::vector<scan_result_t> wifi_scan(){
         ESP_LOGW(TAG, "wifi_scan: esp_wifi_scan_start -> %d", r);
     }
     // restore previous mode/start state if we changed it
-    if (changed_mode && prev_mode != WIFI_MODE_NULL) {
+    bool keep_apsta_for_scan = promoted_ap_for_scan &&
+                               (wifi_scan_is_active() || wifi_sta_is_connected());
+    if (changed_mode && prev_mode != WIFI_MODE_NULL && !keep_apsta_for_scan) {
         esp_err_t mr = esp_wifi_set_mode(prev_mode);
         if (mr != ESP_OK) {
             ESP_LOGW(TAG, "wifi_scan: esp_wifi_set_mode(restore=%d) -> %d", prev_mode, mr);
@@ -479,6 +485,15 @@ void wifi_scan_stop(){
         xSemaphoreTake(s_scan_lock, portMAX_DELAY);
         s_last_scan.clear();
         xSemaphoreGive(s_scan_lock);
+    }
+    if (s_ap_running && !wifi_sta_is_connected()) {
+        wifi_mode_t mode = WIFI_MODE_NULL;
+        if (esp_wifi_get_mode(&mode) == ESP_OK && mode == WIFI_MODE_APSTA) {
+            esp_err_t mr = esp_wifi_set_mode(WIFI_MODE_AP);
+            if (mr != ESP_OK) {
+                ESP_LOGW(TAG, "wifi_scan_stop: esp_wifi_set_mode(AP) -> %d", mr);
+            }
+        }
     }
 }
 
