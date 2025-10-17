@@ -16,6 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <inttypes.h>
+
+#include "nimble/hci_common.h"
 
 extern void ble_store_config_init(void);
 extern int ble_store_util_delete_peer(const ble_addr_t *peer_addr);
@@ -60,6 +63,8 @@ static uint16_t h_kbd_out = 0;
 static uint16_t h_batt = 0;
 
 static int gap_event(struct ble_gap_event *event, void *arg);
+static void ensure_security(uint16_t conn_handle);
+static void log_conn_security(uint16_t conn_handle, const char *context);
 
 static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -192,17 +197,20 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             {
                 s_connected_peer = desc.peer_id_addr;
                 s_connected_peer_valid = true;
+                if (!desc.sec_state.encrypted || !desc.sec_state.bonded)
+                {
+                    ensure_security(event->connect.conn_handle);
+                }
+                else
+                {
+                    log_conn_security(event->connect.conn_handle, "connect");
+                }
             }
             else
             {
                 s_connected_peer_valid = false;
             }
 
-            int sec_rc = ble_gap_security_initiate(event->connect.conn_handle);
-            if (sec_rc != 0 && sec_rc != BLE_HS_EALREADY && sec_rc != BLE_HS_EBUSY)
-            {
-                ESP_LOGW(TAG, "ble_gap_security_initiate failed: %d", sec_rc);
-            }
         }
         else
         {
@@ -219,7 +227,51 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         break;
     case BLE_GAP_EVENT_ENC_CHANGE:
         ESP_LOGI(TAG, "Encryption change status=%d", event->enc_change.status);
+        if (event->enc_change.status == 0)
+        {
+            log_conn_security(event->enc_change.conn_handle, "enc_change");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Encryption failed: %d", event->enc_change.status);
+            ensure_security(event->enc_change.conn_handle);
+        }
         break;
+    case BLE_GAP_EVENT_PASSKEY_ACTION:
+    {
+        const struct ble_gap_passkey_params *params = &event->passkey.params;
+        ESP_LOGI(TAG, "Passkey action=%u", params->action);
+        bool inject = false;
+        struct ble_sm_io pkey;
+        memset(&pkey, 0, sizeof(pkey));
+
+        switch (params->action)
+        {
+        case BLE_SM_IOACT_NONE:
+            ESP_LOGI(TAG, "Using Just Works pairing");
+            break;
+        case BLE_SM_IOACT_NUMCMP:
+            ESP_LOGI(TAG, "Numeric comparison value=%06" PRIu32, params->numcmp);
+            pkey.action = BLE_SM_IOACT_NUMCMP;
+            pkey.numcmp_accept = 1;
+            inject = true;
+            break;
+        default:
+            ESP_LOGW(TAG, "Unsupported passkey action=%u", params->action);
+            ble_gap_terminate(event->passkey.conn_handle, BLE_ERR_AUTH_FAIL);
+            break;
+        }
+
+        if (inject)
+        {
+            int rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
+            if (rc != 0 && rc != BLE_HS_EALREADY)
+            {
+                ESP_LOGW(TAG, "ble_sm_inject_io failed: %d", rc);
+            }
+        }
+        break;
+    }
     case BLE_GAP_EVENT_REPEAT_PAIRING:
     {
         ESP_LOGW(TAG, "Repeat pairing - deleting old bond");
@@ -245,6 +297,18 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     }
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(TAG, "MTU updated: %d", event->mtu.value);
+        break;
+    case BLE_GAP_EVENT_PAIRING_COMPLETE:
+        ESP_LOGI(TAG, "Pairing complete status=%d", event->pairing_complete.status);
+        if (event->pairing_complete.status == 0)
+        {
+            log_conn_security(event->pairing_complete.conn_handle, "pairing_complete");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Pairing failed, terminating connection");
+            ble_gap_terminate(event->pairing_complete.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        }
         break;
     default:
         break;
@@ -340,8 +404,8 @@ void ble_hid_start(const char *name)
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 0;
     ble_hs_cfg.sm_sc = 1;
-    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID | BLE_SM_PAIR_KEY_DIST_SIGN;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID | BLE_SM_PAIR_KEY_DIST_SIGN;
 
     esp_err_t rc = nimble_port_init();
     if (rc != ESP_OK)
@@ -355,6 +419,36 @@ void ble_hid_start(const char *name)
 
     s_nimble_ready = true;
     nimble_port_freertos_init(host_task);
+}
+
+static void ensure_security(uint16_t conn_handle)
+{
+    int sec_rc = ble_gap_security_initiate(conn_handle);
+    if (sec_rc == BLE_HS_EALREADY || sec_rc == BLE_HS_EBUSY)
+    {
+        return;
+    }
+    if (sec_rc != 0)
+    {
+        ESP_LOGW(TAG, "ble_gap_security_initiate(%u) failed: %d", conn_handle, sec_rc);
+    }
+}
+
+static void log_conn_security(uint16_t conn_handle, const char *context)
+{
+    struct ble_gap_conn_desc desc;
+    if (ble_gap_conn_find(conn_handle, &desc) != 0)
+    {
+        return;
+    }
+
+    ESP_LOGI(TAG,
+             "Security (%s): enc=%d auth=%d bonded=%d key_size=%u",
+             context ? context : "",
+             desc.sec_state.encrypted,
+             desc.sec_state.authenticated,
+             desc.sec_state.bonded,
+             desc.sec_state.key_size);
 }
 
 void ble_hid_restart_advertising(void)
