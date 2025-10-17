@@ -373,13 +373,13 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(UUID16_DEVICE_INFO_SERVICE),
      .characteristics = (struct ble_gatt_chr_def[]){
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MODEL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SERIAL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_FIRMWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_HARDWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SOFTWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MANUFACTURER_NAME), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_PNP_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MODEL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SERIAL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_FIRMWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_HARDWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SOFTWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MANUFACTURER_NAME), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_PNP_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
          {0}}},
     // Battery Service
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -388,7 +388,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL),
           .access_cb = chr_access_cb,
           .val_handle = &h_batt,
-          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY,
           .descriptors = (struct ble_gatt_dsc_def[]){
               {.uuid = BLE_UUID16_DECLARE(UUID16_CHAR_PRESENTATION_FORMAT), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb},
               {0}}},
@@ -397,44 +397,44 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(UUID16_DEVICE_ID_SERVICE),
      .characteristics = (struct ble_gatt_chr_def[]){
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_SPECIFICATION_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRODUCT_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VERSION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRIMARY_RECORD), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_SOURCE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_SPECIFICATION_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRODUCT_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VERSION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRIMARY_RECORD), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_SOURCE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
          {0}}},
     // Mouse HID service (RID=1)
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
         .characteristics = (struct ble_gatt_chr_def[]){
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_mouse_cb, .flags = BLE_GATT_CHR_F_READ},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_mouse_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_MOUSE) | (REPORT_TYPE_INPUT << 8))}, {0}}},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_mouse_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
+           {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+           {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_mouse_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+           {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_mouse_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN},
+           {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_MOUSE) | (REPORT_TYPE_INPUT << 8))}, {0}}},
+           {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_mouse_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN},
             {0}}},
     // Keyboard HID service (RID=2)
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_kbd_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_kbd_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP}, {0}}},
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_kbd_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_kbd_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN}, {0}}},
     // Consumer control HID service (RID=3)
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
      .characteristics = (struct ble_gatt_chr_def[]){
-         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_consumer_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_consumer_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
+        {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+        {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_consumer_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN},
+        {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_consumer_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN},
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
           .access_cb = chr_access_cb,
           .val_handle = &h_consumer_in,
-          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY,
           .descriptors = (struct ble_gatt_dsc_def[]){
               {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF),
                .att_flags = BLE_ATT_F_READ,
                .access_cb = dsc_access_cb,
                .arg = (void *)(uintptr_t)((REPORT_ID_CONSUMER) | (REPORT_TYPE_INPUT << 8))},
               {0}}},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_consumer_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
+        {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_consumer_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN},
          {0}}},
     {0}};
 
@@ -681,7 +681,7 @@ void ble_hid_start(const char *name)
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
     ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_mitm = 1;
     ble_hs_cfg.sm_sc = 1;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID | BLE_SM_PAIR_KEY_DIST_SIGN;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID | BLE_SM_PAIR_KEY_DIST_SIGN;
