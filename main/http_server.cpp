@@ -47,6 +47,7 @@ struct configure_status_t {
     configure_state state = configure_state::Idle;
     std::string message;
     std::string sta_ip;
+    std::string sta_url;
     uint32_t version = 0;
 };
 
@@ -161,13 +162,15 @@ static void cfg_status_ensure_mutex(){
     }
 }
 
-static void cfg_status_set(configure_state state, const std::string& message, const std::string& sta_ip){
+static void cfg_status_set(configure_state state, const std::string& message,
+                           const std::string& sta_ip, const std::string& sta_url){
     cfg_status_ensure_mutex();
     if (!s_cfg_mutex) return;
     xSemaphoreTake(s_cfg_mutex, portMAX_DELAY);
     s_cfg_status.state = state;
     s_cfg_status.message = message;
     s_cfg_status.sta_ip = sta_ip;
+    s_cfg_status.sta_url = sta_url;
     s_cfg_status.version++;
     xSemaphoreGive(s_cfg_mutex);
 }
@@ -328,7 +331,9 @@ static esp_err_t status_get(httpd_req_t* req){
         connected_ssid = wifi_get_connected_ssid();
         scan_active = wifi_scan_is_active();
     }
+    std::string sta_url = sta_ip.empty() ? std::string() : "http://" + sta_ip;
     cJSON_AddStringToObject(o, "sta_ip", sta_ip.c_str());
+    cJSON_AddStringToObject(o, "sta_url", sta_url.c_str());
     cJSON_AddStringToObject(o, "ap_ip", ap_ip.c_str());
     cJSON_AddStringToObject(o, "connected_ssid", connected_ssid.c_str());
     cJSON_AddBoolToObject(o, "scan_active", scan_active);
@@ -351,6 +356,7 @@ static esp_err_t status_get(httpd_req_t* req){
     cJSON_AddStringToObject(o, "ap_mac", ap_mac.c_str());
     cJSON* sta_obj = cJSON_CreateObject();
     cJSON_AddStringToObject(sta_obj, "ip", sta_ip.c_str());
+    cJSON_AddStringToObject(sta_obj, "url", sta_url.c_str());
     cJSON_AddStringToObject(sta_obj, "mac", sta_mac.c_str());
     cJSON_AddStringToObject(sta_obj, "ssid", connected_ssid.c_str());
     cJSON_AddBoolToObject(sta_obj, "connected", !sta_ip.empty());
@@ -358,19 +364,25 @@ static esp_err_t status_get(httpd_req_t* req){
     cJSON* ap_obj = cJSON_CreateObject();
     cJSON_AddStringToObject(ap_obj, "ip", ap_ip.c_str());
     cJSON_AddStringToObject(ap_obj, "mac", ap_mac.c_str());
-    wifi_sta_list_t sta_list = {};
-    esp_err_t sta_list_ret = esp_wifi_ap_get_sta_list(&sta_list);
-    int client_count = (sta_list_ret == ESP_OK) ? sta_list.num : 0;
+    int client_count = 0;
+    std::vector<ap_client_info_t> ap_clients = wifi_get_ap_clients(&client_count);
     cJSON_AddNumberToObject(ap_obj, "client_count", client_count);
     cJSON* clients = cJSON_CreateArray();
-    if (sta_list_ret == ESP_OK) {
-        for (int i = 0; i < sta_list.num; ++i) {
-            cJSON* entry = cJSON_CreateObject();
-            std::string client_mac = format_mac(sta_list.sta[i].mac);
-            cJSON_AddStringToObject(entry, "mac", client_mac.c_str());
-            cJSON_AddNumberToObject(entry, "rssi", sta_list.sta[i].rssi);
-            cJSON_AddItemToArray(clients, entry);
+    for (const auto& client : ap_clients) {
+        cJSON* entry = cJSON_CreateObject();
+        std::string client_mac = format_mac(client.mac.data());
+        cJSON_AddStringToObject(entry, "mac", client_mac.c_str());
+        cJSON_AddNumberToObject(entry, "rssi", client.rssi);
+        if (client.has_ip) {
+            esp_ip4_addr_t ip;
+            ip.addr = client.ip;
+            char ip_buf[16] = {0};
+            esp_ip4addr_ntoa(&ip, ip_buf, sizeof(ip_buf));
+            cJSON_AddStringToObject(entry, "ip", ip_buf);
+        } else {
+            cJSON_AddStringToObject(entry, "ip", "");
         }
+        cJSON_AddItemToArray(clients, entry);
     }
     cJSON_AddItemToObject(ap_obj, "clients", clients);
     cJSON_AddItemToObject(o, "ap", ap_obj);
@@ -390,6 +402,7 @@ static esp_err_t status_get(httpd_req_t* req){
         cJSON_AddStringToObject(cfg_obj, "state", state_str);
         cJSON_AddStringToObject(cfg_obj, "message", cfg.message.c_str());
         cJSON_AddStringToObject(cfg_obj, "sta_ip", cfg.sta_ip.c_str());
+        cJSON_AddStringToObject(cfg_obj, "sta_url", cfg.sta_url.c_str());
         cJSON_AddNumberToObject(cfg_obj, "version", cfg.version);
         cJSON_AddItemToObject(o, "configure", cfg_obj);
     }
@@ -568,7 +581,7 @@ static esp_err_t configure_post(httpd_req_t* req){
 
     // Update configure status immediately so clients can show progress.
     std::string pending_msg = "Connecting to '" + ssid_copy + "'…";
-    cfg_status_set(configure_state::Pending, pending_msg, "");
+    cfg_status_set(configure_state::Pending, pending_msg, "", "");
 
     // Background task will perform the connect and post actions
     struct cfg_task_arg { std::string ssid; std::string pw; };
@@ -587,14 +600,15 @@ static esp_err_t configure_post(httpd_req_t* req){
             if (!sta_ip.empty()) {
                 msg += " (" + sta_ip + ")";
             }
-            cfg_status_set(configure_state::Success, msg, sta_ip);
+            std::string sta_url = sta_ip.empty() ? std::string() : "http://" + sta_ip;
+            cfg_status_set(configure_state::Success, msg, sta_ip, sta_url);
             // Allow clients a moment to fetch the success status before shutting down the AP.
-            vTaskDelay(pdMS_TO_TICKS(1500));
+            vTaskDelay(pdMS_TO_TICKS(4000));
             if (wifi_is_ap()) wifi_ap_stop();
         }
         else {
             std::string msg = "Failed to connect to '" + a->ssid + "'";
-            cfg_status_set(configure_state::Failed, msg, "");
+            cfg_status_set(configure_state::Failed, msg, "", "");
         }
         delete a;
         vTaskDelete(NULL);
@@ -602,7 +616,7 @@ static esp_err_t configure_post(httpd_req_t* req){
     // create task with small stack; detach from HTTP handler
     if (xTaskCreate((TaskFunction_t)cfg_task, "cfg_connect", 4096, arg, 5, NULL) != pdPASS) {
         ESP_LOGW(TAG, "configure_post: failed to spawn cfg task");
-        cfg_status_set(configure_state::Failed, "Failed to start connect task", "");
+        cfg_status_set(configure_state::Failed, "Failed to start connect task", "", "");
         delete arg;
     }
 

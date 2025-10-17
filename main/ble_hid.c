@@ -4,7 +4,6 @@
 #include "esp_bt.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-#include "esp_nimble_hci.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_hs_id.h"
@@ -17,9 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-
-static esp_err_t ble_hid_controller_init(void);
-static void ble_hid_controller_deinit(void);
 
 /* NimBLE bond store helpers are not publicly declared in recent headers */
 extern void ble_store_config_init(void);
@@ -152,82 +148,6 @@ static const uint8_t KEYBOARD_REPORT[] = {
     0x29, 0x65, 0x81, 0x00, 0xC0};
 
 static int start_advertising(const char *name);
-
-static esp_err_t ble_hid_controller_init(void)
-{
-    esp_err_t err = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
-    {
-        ESP_LOGE(TAG, "esp_bt_controller_mem_release failed: %d", err);
-        return err;
-    }
-
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    err = esp_bt_controller_init(&bt_cfg);
-    bool controller_initialized = false;
-    if (err == ESP_OK)
-    {
-        controller_initialized = true;
-    }
-    else if (err != ESP_ERR_INVALID_STATE)
-    {
-        ESP_LOGE(TAG, "esp_bt_controller_init failed: %d", err);
-        return err;
-    }
-
-    err = esp_bt_controller_enable(ESP_BT_MODE_BLE);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
-    {
-        ESP_LOGE(TAG, "esp_bt_controller_enable failed: %d", err);
-        if (controller_initialized)
-        {
-            esp_bt_controller_deinit();
-        }
-        return err;
-    }
-
-    err = esp_nimble_hci_init();
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "esp_nimble_hci_init failed: %d", err);
-        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED)
-        {
-            esp_bt_controller_disable();
-        }
-        if (controller_initialized)
-        {
-            esp_bt_controller_deinit();
-        }
-        return err;
-    }
-
-    return ESP_OK;
-}
-
-static void ble_hid_controller_deinit(void)
-{
-    s_nimble_ready = false;
-    esp_err_t err = esp_nimble_hci_deinit();
-    if (err != ESP_OK)
-    {
-        ESP_LOGW(TAG, "esp_nimble_hci_deinit failed: %d", err);
-    }
-
-    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED)
-    {
-        err = esp_bt_controller_disable();
-        if (err != ESP_OK)
-        {
-            ESP_LOGW(TAG, "esp_bt_controller_disable failed: %d", err);
-        }
-    }
-
-    err = esp_bt_controller_deinit();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
-    {
-        ESP_LOGW(TAG, "esp_bt_controller_deinit failed: %d", err);
-    }
-}
 
 // Characteristic value providers for the fixed reports
 static int repmap_mouse_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -396,7 +316,7 @@ static void host_task(void *pvParameters)
     /* Cleanly tear down the NimBLE port if the task exits. */
     nimble_port_freertos_deinit();
     nimble_port_deinit();
-    ble_hid_controller_deinit();
+    s_nimble_ready = false;
     vTaskDelete(NULL);
 }
 
@@ -412,19 +332,11 @@ void ble_hid_start(const char *name)
     ble_hs_cfg.sm_sc = 1;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    esp_err_t err = ble_hid_controller_init();
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "ble_hid_controller_init failed: %d", err);
-        s_nimble_ready = false;
-        return;
-    }
 
-    int rc = nimble_port_init();
-    if (rc != 0)
+    esp_err_t rc = nimble_port_init();
+    if (rc != ESP_OK)
     {
         ESP_LOGE(TAG, "nimble_port_init failed: %d", rc);
-        ble_hid_controller_deinit();
         s_nimble_ready = false;
         return;
     }

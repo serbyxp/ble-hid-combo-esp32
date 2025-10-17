@@ -220,6 +220,7 @@
       let lastPeerCount = null;
       let peersLoading = false;
       let peersReloadPending = false;
+      let lastStaIpDisplay = '';
 
       function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -264,15 +265,52 @@
         netlist.appendChild(frag);
       }
 
-      function scheduleRedirect(ip) {
+      function renderStaIp(ip, url) {
+        const value = (typeof ip === 'string') ? ip.trim() : '';
+        const href = (typeof url === 'string' && url) ? url : (value ? `http://${value}` : '');
+        if (!value) {
+          lastStaIpDisplay = '';
+          staIp.textContent = '—';
+          return;
+        }
+        if (value === lastStaIpDisplay && staIp.firstChild && staIp.firstChild.textContent === value) {
+          return;
+        }
+        lastStaIpDisplay = value;
+        while (staIp.firstChild) {
+          staIp.removeChild(staIp.firstChild);
+        }
+        const node = document.createElement(href ? 'a' : 'span');
+        node.textContent = value;
+        if (href) {
+          try {
+            node.href = new URL(href, window.location.href).toString();
+          } catch (e) {
+            node.href = href;
+          }
+          node.target = '_blank';
+          node.rel = 'noopener noreferrer';
+        }
+        staIp.appendChild(node);
+      }
+
+      function scheduleRedirect(ip, url) {
         if (!ip || redirectTimer) return;
-        const next = new URL(window.location.href);
-        next.hostname = ip;
-        next.protocol = window.location.protocol;
-        next.port = window.location.port;
-        next.pathname = '/';
-        next.search = '';
-        next.hash = '';
+        let next = null;
+        if (typeof url === 'string' && url) {
+          try {
+            next = new URL(url, window.location.href);
+          } catch (e) { /* ignore invalid URL */ }
+        }
+        if (!next) {
+          next = new URL(window.location.href);
+          next.hostname = ip;
+          next.protocol = window.location.protocol;
+          next.port = window.location.port;
+          next.pathname = '/';
+          next.search = '';
+          next.hash = '';
+        }
         if (msg.textContent.indexOf('Redirecting') === -1) {
           msg.textContent = (msg.textContent ? msg.textContent + ' ' : '') + `Redirecting to ${ip}…`;
         }
@@ -293,14 +331,34 @@
         if (state === 'pending') {
           msg.textContent = message || 'connecting…';
         } else if (state === 'success') {
-          msg.textContent = message || 'connected';
+          const display = message || 'connected';
+          const url = (cfg && typeof cfg.sta_url === 'string' && cfg.sta_url)
+            ? cfg.sta_url
+            : (cfg.sta_ip ? `http://${cfg.sta_ip}` : '');
+          msg.textContent = '';
+          msg.appendChild(document.createTextNode(display));
+          if (url) {
+            msg.appendChild(document.createTextNode(' '));
+            const link = document.createElement('a');
+            try {
+              link.href = new URL(url, window.location.href).toString();
+            } catch (e) {
+              link.href = url;
+            }
+            link.textContent = url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            msg.appendChild(link);
+          }
           if (cfg.sta_ip) {
-            scheduleRedirect(cfg.sta_ip);
+            scheduleRedirect(cfg.sta_ip, url);
           }
         } else if (state === 'failed') {
           msg.textContent = message || 'connection failed';
         } else if (message) {
           msg.textContent = message;
+        } else {
+          msg.textContent = '';
         }
       }
 
@@ -414,7 +472,9 @@
           const staInfo = (s.sta && typeof s.sta === 'object') ? s.sta : {};
           const apInfo = (s.ap && typeof s.ap === 'object') ? s.ap : {};
           hostnameEl.textContent = s.hostname || '—';
-          staIp.textContent = staInfo.ip || s.sta_ip || '—';
+          const ip = staInfo.ip || s.sta_ip || '';
+          const url = staInfo.url || s.sta_url || (ip ? `http://${ip}` : '');
+          renderStaIp(ip, url);
           apIp.textContent = apInfo.ip || s.ap_ip || '—';
           connSsid.textContent = staInfo.ssid || s.connected_ssid || '—';
           staMac.textContent = staInfo.mac || s.sta_mac || '—';
@@ -425,8 +485,9 @@
           if (clients.length) {
             apClients.textContent = clients.map(c => {
               const mac = c && c.mac ? c.mac : '??';
-              const rssi = (c && Number.isFinite(c.rssi)) ? ` (${c.rssi} dBm)` : '';
-              return mac + rssi;
+              const ipLabel = (c && typeof c.ip === 'string' && c.ip) ? c.ip : '';
+              const rssiLabel = (c && Number.isFinite(c.rssi)) ? `${c.rssi} dBm` : '';
+              return [mac, ipLabel, rssiLabel].filter(Boolean).join(' · ');
             }).join(', ');
           } else {
             apClients.textContent = 'none';
