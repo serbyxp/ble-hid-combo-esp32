@@ -33,6 +33,11 @@ idf.py build flash monitor
   - `GET /ws` → WebSocket echo
 - The BLE device advertises as **uHID**, **appearance=962**, with **HID service 0x1812** and your report maps. Works with iOS HOGP hosts.
 
+### Web dashboard tips
+
+- The **Wi‑Fi setup** card keeps the network picker and password entry together so you can scan, pick an SSID, and immediately hit **Connect**.
+- The **Bluetooth HID & tests** card shows BLE status, UART activity, and the WebSocket connection. Use the **Send test** button to push a sample mouse jiggle or keyboard tap; acknowledgements from the ESP32 appear in the log panel.
+
 ## UART Protocol (default enabled)
 
 - Port: `UART0` @ 115200 8N1 (USB serial).
@@ -47,6 +52,22 @@ idf.py build flash monitor
 
 On start-up the bridge emits `{"type":"status","event":"ready"}` so hosts can
 confirm the connection is open.
+
+### Testing with `tools/uart_client.py`
+
+1. Install [`pyserial`](https://pypi.org/project/pyserial/): `python3 -m pip install --user pyserial` (on Windows use the ESP-IDF Python environment prompt).
+2. Connect the ESP32 USB serial bridge and note the device path (e.g. `/dev/ttyUSB0` on Linux/macOS or `COM3` on Windows).
+3. Run a command, adding `--port` when auto-detect is insufficient:
+
+   ```bash
+   # Linux/macOS (auto-selects first /dev/ttyUSB*)
+   python3 tools/uart_client.py mouse 40 -10 0 --b1 1
+
+   # Windows example specifying COM3
+   python tools/uart_client.py --port COM3 key --mods 0x02 0x04
+   ```
+
+4. Append `--listen` to leave the connection open and print reports from the firmware.
 
 ## UART CLI helper
 

@@ -14,11 +14,18 @@ static void uart_bridge_task(void *);
 static std::atomic<bool> s_uart_rx_seen{false};
 static const char READY_MSG[] = "{\"type\":\"status\",\"event\":\"ready\"}\n";
 
-static void handle_json(const char *s)
+bool uart_bridge_handle_json(const char *s)
 {
+    if (!s)
+    {
+        return false;
+    }
     cJSON *root = cJSON_Parse(s);
     if (!root)
-        return;
+    {
+        return false;
+    }
+    bool handled = false;
     const char *type = cJSON_GetStringValue(cJSON_GetObjectItem(root, "type"));
     if (type && strcmp(type, "mouse") == 0)
     {
@@ -30,6 +37,7 @@ static void handle_json(const char *s)
         int b3 = cJSON_GetNumberValue(cJSON_GetObjectItem(root, "b3"));
         uint8_t buttons = (b1 ? 1 : 0) | (b2 ? 2 : 0) | (b3 ? 4 : 0);
         ble_hid_notify_mouse((int8_t)dx, (int8_t)dy, (int8_t)wh, buttons);
+        handled = true;
     }
     else if (type && strcmp(type, "key") == 0)
     {
@@ -48,6 +56,7 @@ static void handle_json(const char *s)
         }
         ble_hid_kbd_set(mods, keys);
         ble_hid_notify_kbd();
+        handled = true;
     }
     else if (type && strcmp(type, "battery") == 0)
     {
@@ -57,6 +66,7 @@ static void handle_json(const char *s)
         if (pct > 100)
             pct = 100;
         ble_hid_set_battery((uint8_t)pct);
+        handled = true;
     }
     else if (type && strcmp(type, "config") == 0)
     {
@@ -69,8 +79,10 @@ static void handle_json(const char *s)
         if ((v = cJSON_GetObjectItem(root, "uart")))
             t.enable_uart = cJSON_IsTrue(v);
         cfg_save_toggles(&t);
+        handled = true;
     }
     cJSON_Delete(root);
+    return handled;
 }
 
 void uart_bridge_start()
@@ -107,7 +119,7 @@ static void uart_bridge_task(void *)
             {
                 line[pos] = 0;
                 if (pos > 0)
-                    handle_json(line);
+                    uart_bridge_handle_json(line);
                 pos = 0;
             }
             else if (pos < (int)sizeof(line) - 1)
