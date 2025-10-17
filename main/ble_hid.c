@@ -38,12 +38,28 @@ static ble_addr_t s_connected_peer = {0};
 // UUIDs
 #define UUID16_HID_SERVICE 0x1812
 #define UUID16_BAS_SERVICE 0x180F
+#define UUID16_DEVICE_INFO_SERVICE 0x180A
+#define UUID16_DEVICE_ID_SERVICE 0x1200
 #define UUID16_HID_INFO 0x2A4A
 #define UUID16_REPORT_MAP 0x2A4B
 #define UUID16_HID_CTRL 0x2A4C
 #define UUID16_HID_REPORT 0x2A4D
 #define UUID16_PROTO_MODE 0x2A4E
 #define UUID16_BATT_LEVEL 0x2A19
+#define UUID16_DIS_MODEL_NUMBER 0x2A24
+#define UUID16_DIS_SERIAL_NUMBER 0x2A25
+#define UUID16_DIS_FIRMWARE_REVISION 0x2A26
+#define UUID16_DIS_HARDWARE_REVISION 0x2A27
+#define UUID16_DIS_SOFTWARE_REVISION 0x2A28
+#define UUID16_DIS_MANUFACTURER_NAME 0x2A29
+#define UUID16_DIS_PNP_ID 0x2A50
+#define UUID16_DID_SPECIFICATION_ID 0x0200
+#define UUID16_DID_VENDOR_ID 0x0201
+#define UUID16_DID_PRODUCT_ID 0x0202
+#define UUID16_DID_VERSION 0x0203
+#define UUID16_DID_PRIMARY_RECORD 0x0204
+#define UUID16_DID_VENDOR_SOURCE 0x0205
+#define UUID16_CHAR_PRESENTATION_FORMAT 0x2904
 #define UUID16_REPORT_REF 0x2908
 
 // Report types
@@ -84,6 +100,23 @@ static uint8_t s_kbd_ctrl_point = 0;
 static uint8_t s_kbd_proto_mode = 1;
 static uint8_t s_consumer_ctrl_point = 0;
 static uint8_t s_consumer_proto_mode = 1;
+
+static const uint8_t DIS_MODEL_NUMBER[24] = "1";
+static const uint8_t DIS_SERIAL_NUMBER[16] = "1";
+static const uint8_t DIS_FIRMWARE_REVISION[8] = "1";
+static const uint8_t DIS_HARDWARE_REVISION[16] = "1";
+static const uint8_t DIS_SOFTWARE_REVISION[8] = "2";
+static const uint8_t DIS_MANUFACTURER_NAME[36] = "Homebrew";
+static const uint8_t DIS_PNP_ID[] = {0x01, 0xFF, 0xFF, 0x00, 0x01, 0x01, 0x23};
+
+static const uint8_t DID_SPECIFICATION_ID[] = {'0', 'x', '0', '1', '0', '3'};
+static const uint8_t DID_VENDOR_ID[] = {0xFF, 0xFF};
+static const uint8_t DID_PRODUCT_ID[] = {0x00, 0x01};
+static const uint8_t DID_VERSION[] = {0x01, 0x23};
+static const uint8_t DID_PRIMARY_RECORD[] = {'0', 'x', '0', '1'};
+static const uint8_t DID_VENDOR_SOURCE[] = {0x00, 0x01};
+
+static const uint8_t BATT_PRESENTATION_FORMAT[] = {0x04, 0x00, 0xAD, 0x27, 0x01, 0x00, 0x00};
 
 static int gap_event(struct ble_gap_event *event, void *arg);
 static void ensure_security(uint16_t conn_handle);
@@ -218,6 +251,58 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             return os_mbuf_append(ctxt->om, &s_batt, 1) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
     }
+    else if (uuid == UUID16_DIS_MODEL_NUMBER)
+    {
+        return os_mbuf_append(ctxt->om, DIS_MODEL_NUMBER, sizeof(DIS_MODEL_NUMBER)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_SERIAL_NUMBER)
+    {
+        return os_mbuf_append(ctxt->om, DIS_SERIAL_NUMBER, sizeof(DIS_SERIAL_NUMBER)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_FIRMWARE_REVISION)
+    {
+        return os_mbuf_append(ctxt->om, DIS_FIRMWARE_REVISION, sizeof(DIS_FIRMWARE_REVISION)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_HARDWARE_REVISION)
+    {
+        return os_mbuf_append(ctxt->om, DIS_HARDWARE_REVISION, sizeof(DIS_HARDWARE_REVISION)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_SOFTWARE_REVISION)
+    {
+        return os_mbuf_append(ctxt->om, DIS_SOFTWARE_REVISION, sizeof(DIS_SOFTWARE_REVISION)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_MANUFACTURER_NAME)
+    {
+        return os_mbuf_append(ctxt->om, DIS_MANUFACTURER_NAME, sizeof(DIS_MANUFACTURER_NAME)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DIS_PNP_ID)
+    {
+        return os_mbuf_append(ctxt->om, DIS_PNP_ID, sizeof(DIS_PNP_ID)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_SPECIFICATION_ID)
+    {
+        return os_mbuf_append(ctxt->om, DID_SPECIFICATION_ID, sizeof(DID_SPECIFICATION_ID)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_VENDOR_ID)
+    {
+        return os_mbuf_append(ctxt->om, DID_VENDOR_ID, sizeof(DID_VENDOR_ID)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_PRODUCT_ID)
+    {
+        return os_mbuf_append(ctxt->om, DID_PRODUCT_ID, sizeof(DID_PRODUCT_ID)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_VERSION)
+    {
+        return os_mbuf_append(ctxt->om, DID_VERSION, sizeof(DID_VERSION)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_PRIMARY_RECORD)
+    {
+        return os_mbuf_append(ctxt->om, DID_PRIMARY_RECORD, sizeof(DID_PRIMARY_RECORD)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_DID_VENDOR_SOURCE)
+    {
+        return os_mbuf_append(ctxt->om, DID_VENDOR_SOURCE, sizeof(DID_VENDOR_SOURCE)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
     else if (uuid == UUID16_HID_INFO)
     {
         static const uint8_t hid_info[4] = {0x01, 0x01, 0x00, 0x00};
@@ -240,6 +325,10 @@ static int dsc_access_cb(uint16_t conn_handle, uint16_t attr_handle,
         ref[0] = ((uintptr_t)arg) & 0xFF;        // report ID
         ref[1] = (((uintptr_t)arg) >> 8) & 0xFF; // type
         return os_mbuf_append(ctxt->om, ref, 2) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    else if (uuid == UUID16_CHAR_PRESENTATION_FORMAT)
+    {
+        return os_mbuf_append(ctxt->om, BATT_PRESENTATION_FORMAT, sizeof(BATT_PRESENTATION_FORMAT)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     }
     return 0;
 }
@@ -280,6 +369,29 @@ static int repmap_consumer_cb(uint16_t conn_handle, uint16_t attr_handle, struct
 }
 
 static const struct ble_gatt_svc_def gatt_svcs[] = {
+    // Device Information Service
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = BLE_UUID16_DECLARE(UUID16_DEVICE_INFO_SERVICE),
+     .characteristics = (struct ble_gatt_chr_def[]){
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MODEL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SERIAL_NUMBER), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_FIRMWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_HARDWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_SOFTWARE_REVISION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MANUFACTURER_NAME), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_PNP_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {0}}},
+    // Device ID Service
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = BLE_UUID16_DECLARE(UUID16_DEVICE_ID_SERVICE),
+     .characteristics = (struct ble_gatt_chr_def[]){
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_SPECIFICATION_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRODUCT_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VERSION), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_PRIMARY_RECORD), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_DID_VENDOR_SOURCE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {0}}},
     // Mouse HID service (RID=1)
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -313,7 +425,17 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_consumer_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
          {0}}},
     // Battery Service
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL), .access_cb = chr_access_cb, .val_handle = &h_batt, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY}, {0}}},
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE),
+     .characteristics = (struct ble_gatt_chr_def[]){
+         {.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_batt,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+          .descriptors = (struct ble_gatt_dsc_def[]){
+              {.uuid = BLE_UUID16_DECLARE(UUID16_CHAR_PRESENTATION_FORMAT), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb},
+              {0}}},
+         {0}}},
     {0}};
 
 static int gap_event(struct ble_gap_event *event, void *arg)
