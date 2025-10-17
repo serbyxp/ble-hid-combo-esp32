@@ -7,7 +7,9 @@
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_hs_id.h"
+#include "host/ble_hs_mbuf.h"
 #include "host/ble_sm.h"
+#include "os/os_mbuf.h"
 #include "store/config/ble_store_config.h"
 #include "host/ble_store.h"
 #include "host/ble_gap.h"
@@ -28,6 +30,7 @@ static const char *TAG = "ble_hid";
 static const char *s_device_name = NULL;
 static uint8_t s_own_addr_type;
 static bool s_ble_connected = false;
+static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool s_nimble_ready = false;
 static bool s_connected_peer_valid = false;
 static ble_addr_t s_connected_peer = {0};
@@ -64,14 +67,61 @@ static uint8_t s_batt = 100;
 static kbd_out_cb_t s_kbd_cb = NULL;
 
 static uint16_t h_mouse_rep = 0;
+static uint16_t h_mouse_ctrl = 0;
+static uint16_t h_mouse_proto = 0;
 static uint16_t h_kbd_in = 0;
 static uint16_t h_kbd_out = 0;
+static uint16_t h_kbd_ctrl = 0;
+static uint16_t h_kbd_proto = 0;
 static uint16_t h_consumer_in = 0;
+static uint16_t h_consumer_ctrl = 0;
+static uint16_t h_consumer_proto = 0;
 static uint16_t h_batt = 0;
+
+static uint8_t s_mouse_ctrl_point = 0;
+static uint8_t s_mouse_proto_mode = 1;
+static uint8_t s_kbd_ctrl_point = 0;
+static uint8_t s_kbd_proto_mode = 1;
+static uint8_t s_consumer_ctrl_point = 0;
+static uint8_t s_consumer_proto_mode = 1;
 
 static int gap_event(struct ble_gap_event *event, void *arg);
 static void ensure_security(uint16_t conn_handle);
 static void log_conn_security(uint16_t conn_handle, const char *context);
+
+static uint8_t *ctrl_point_for_handle(uint16_t handle)
+{
+    if (handle == h_mouse_ctrl)
+    {
+        return &s_mouse_ctrl_point;
+    }
+    if (handle == h_kbd_ctrl)
+    {
+        return &s_kbd_ctrl_point;
+    }
+    if (handle == h_consumer_ctrl)
+    {
+        return &s_consumer_ctrl_point;
+    }
+    return NULL;
+}
+
+static uint8_t *proto_mode_for_handle(uint16_t handle)
+{
+    if (handle == h_mouse_proto)
+    {
+        return &s_mouse_proto_mode;
+    }
+    if (handle == h_kbd_proto)
+    {
+        return &s_kbd_proto_mode;
+    }
+    if (handle == h_consumer_proto)
+    {
+        return &s_consumer_proto_mode;
+    }
+    return NULL;
+}
 
 static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -116,6 +166,49 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             {
                 return os_mbuf_append(ctxt->om, s_consumer_state, sizeof(s_consumer_state)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             }
+        }
+    }
+    else if (uuid == UUID16_HID_CTRL)
+    {
+        uint8_t *ctrl = ctrl_point_for_handle(attr_handle);
+        if (!ctrl)
+        {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+        {
+            return os_mbuf_append(ctxt->om, ctrl, 1) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR)
+        {
+            uint8_t val = 0;
+            if (OS_MBUF_PKTLEN(ctxt->om) > 0)
+            {
+                os_mbuf_copydata(ctxt->om, 0, 1, &val);
+            }
+            *ctrl = val;
+        }
+    }
+    else if (uuid == UUID16_PROTO_MODE)
+    {
+        uint8_t *mode = proto_mode_for_handle(attr_handle);
+        if (!mode)
+        {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+        {
+            return os_mbuf_append(ctxt->om, mode, 1) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR)
+        {
+            uint8_t val = 0;
+            if (OS_MBUF_PKTLEN(ctxt->om) > 0)
+            {
+                os_mbuf_copydata(ctxt->om, 0, 1, &val);
+                val = (val != 0);
+            }
+            *mode = val;
         }
     }
     else if (uuid == UUID16_BATT_LEVEL)
@@ -194,19 +287,19 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
         .characteristics = (struct ble_gatt_chr_def[]){
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
             {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_mouse_cb, .flags = BLE_GATT_CHR_F_READ},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
+            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_mouse_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_NO_RSP},
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_MOUSE) | (REPORT_TYPE_INPUT << 8))}, {0}}},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
+            {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_mouse_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
             {0}}},
     // Keyboard HID service (RID=2)
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC}, {0}}},
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_kbd_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_kbd_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC}, {0}}},
     // Consumer control HID service (RID=3)
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
      .characteristics = (struct ble_gatt_chr_def[]){
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
          {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_consumer_cb, .flags = BLE_GATT_CHR_F_READ},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .val_handle = &h_consumer_ctrl, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_NO_RSP},
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
           .access_cb = chr_access_cb,
           .val_handle = &h_consumer_in,
@@ -217,7 +310,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
                .access_cb = dsc_access_cb,
                .arg = (void *)(uintptr_t)((REPORT_ID_CONSUMER) | (REPORT_TYPE_INPUT << 8))},
               {0}}},
-         {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_consumer_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
          {0}}},
     // Battery Service
     {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL), .access_cb = chr_access_cb, .val_handle = &h_batt, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY}, {0}}},
@@ -233,6 +326,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         s_ble_connected = (event->connect.status == 0);
         if (event->connect.status == 0)
         {
+            s_conn_handle = event->connect.conn_handle;
             struct ble_gap_conn_desc desc;
             if (ble_gap_conn_find(event->connect.conn_handle, &desc) == 0)
             {
@@ -256,6 +350,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         else
         {
             s_connected_peer_valid = false;
+            s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             ble_hid_restart_advertising();
         }
         break;
@@ -263,6 +358,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "GAP disconnect");
         s_ble_connected = false;
         s_connected_peer_valid = false;
+        s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         // restart advertising with persisted identity information
         ble_hid_restart_advertising();
         break;
@@ -398,6 +494,26 @@ static int start_advertising(const char *name)
     return rc;
 }
 
+static void notify_value(uint16_t attr_handle, const void *data, size_t len)
+{
+    if (!s_ble_connected || s_conn_handle == BLE_HS_CONN_HANDLE_NONE)
+    {
+        return;
+    }
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
+    if (!om)
+    {
+        ESP_LOGW(TAG, "notify_value: ble_hs_mbuf_from_flat failed");
+        return;
+    }
+    int rc = ble_gatts_notify_custom(s_conn_handle, attr_handle, om);
+    if (rc != 0)
+    {
+        ESP_LOGW(TAG, "notify_value: ble_gatts_notify_custom -> %d", rc);
+        os_mbuf_free_chain(om);
+    }
+}
+
 static void on_sync(void)
 {
     int rc = ble_hs_id_infer_auto(0, &s_own_addr_type);
@@ -512,6 +628,7 @@ void ble_hid_notify_mouse(int8_t dx, int8_t dy, int8_t wheel, uint8_t buttons)
     if (h_mouse_rep)
     {
         ble_gatts_chr_updated(h_mouse_rep);
+        notify_value(h_mouse_rep, s_mouse_state, sizeof(s_mouse_state));
     }
 }
 
@@ -528,6 +645,7 @@ void ble_hid_notify_kbd(void)
     if (h_kbd_in)
     {
         ble_gatts_chr_updated(h_kbd_in);
+        notify_value(h_kbd_in, s_kbd_in, sizeof(s_kbd_in));
     }
 }
 
@@ -538,6 +656,7 @@ void ble_hid_notify_consumer(uint16_t usage)
     if (h_consumer_in)
     {
         ble_gatts_chr_updated(h_consumer_in);
+        notify_value(h_consumer_in, s_consumer_state, sizeof(s_consumer_state));
     }
 }
 
@@ -547,6 +666,7 @@ void ble_hid_set_battery(uint8_t pct)
     if (h_batt)
     {
         ble_gatts_chr_updated(h_batt);
+        notify_value(h_batt, &s_batt, sizeof(s_batt));
     }
 }
 
