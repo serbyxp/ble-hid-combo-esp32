@@ -1,0 +1,11 @@
+{
+    "idf.pythonInstallPath": "C:\\Espressif\\tools\\idf-python\\3.11.2\\python.exe",
+    "files.associations": {
+        "vector": "cpp",
+        "nimble_port.h": "c",
+        "ble_sm.h": "c"
+    },
+    "idf.port": "/dev/ttyUSB0",
+    "idf.portWin": "COM3",
+    "idf.flashType": "UART"
+}

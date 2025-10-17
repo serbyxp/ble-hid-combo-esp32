@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wi‑Fi Manager</title>
+  <style>
+    body {
+      font: 14px/1.45 system-ui, Segoe UI, Roboto, Ubuntu, sans-serif;
+      margin: 24px;
+      color: #0b1320;
+    }
+
+    fieldset {
+      max-width: 560px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    legend {
+      font-weight: 600;
+    }
+
+    .row {
+      margin: .6rem 0;
+    }
+
+    .ssid {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      margin: .25rem 0;
+    }
+
+    .rssi {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    button,
+    input[type=submit] {
+      padding: .5rem .9rem;
+      border-radius: 8px;
+      border: 1px solid #9ca3af;
+      background: #eef;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    .peer-section {
+      display: flex;
+      flex-direction: column;
+      gap: .6rem;
+      width: 100%;
+    }
+
+    .peer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .peer-actions {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .peer-list {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: .5rem .75rem;
+      background: #f9fafb;
+      display: flex;
+      flex-direction: column;
+      gap: .35rem;
+    }
+
+    .peer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      padding: .2rem 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .peer:last-child {
+      border-bottom: none;
+    }
+
+    .peer-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .peer-name {
+      font-weight: 600;
+    }
+
+    .peer-meta {
+      font-size: 12px;
+      color: #6b7280;
+      display: flex;
+      flex-wrap: wrap;
+      gap: .35rem;
+      align-items: center;
+    }
+
+    .peer-status {
+      font-size: 12px;
+      padding: .1rem .55rem;
+      border-radius: 999px;
+    }
+
+    .peer-status.connected {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .peer-status.disconnected {
+      background: #e5e7eb;
+      color: #4b5563;
+    }
+
+    .peer-empty {
+      text-align: center;
+      padding: .4rem 0;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Wi‑Fi Provisioning</h1>
+  <p class="muted">Connect to the ESP32 SoftAP (`ESP32-HID-Setup`) using password <code>uhid1234</code>.</p>
+
+  <fieldset>
+    <legend>Nearby networks</legend>
+    <div id="netlist" class="row">
+      <div class="muted">(scanning…)</div>
+    </div>
+
+    <div class="row">
+      <button id="scanToggle">Start scan</button>
+      <button id="resultsRefresh">Refresh results</button>
+      <span id="scanState" class="muted"></span>
+    </div>
+
+    <div class="row muted">Hostname: <span id="hostname">—</span></div>
+    <div class="row muted">STA · IP <span id="staIp">—</span> · MAC <span id="staMac">—</span> · SSID <span
+        id="connSsid">—</span></div>
+    <div class="row muted">AP · IP <span id="apIp">—</span> · MAC <span id="apMac">—</span></div>
+    <div class="row muted">AP clients (<span id="apClientCount">0</span>): <span id="apClients">—</span></div>
+
+    <div class="row muted">BLE <span id="bleState">—</span> · UART <span id="uartStatus">—</span></div>
+    <div class="row">
+      <div class="peer-section">
+        <div class="peer-header">
+          <span class="muted">Bonded devices (<span id="bondedCount">—</span>)</span>
+          <div class="peer-actions">
+            <button id="refreshPeers" type="button">Refresh peers</button>
+            <button id="forgetAll" type="button">Forget all</button>
+          </div>
+        </div>
+        <div id="blePeerList" class="peer-list">
+          <div class="muted peer-empty">(loading peers…)</div>
+        </div>
+      </div>
+    </div>
+
+    <form id="cfg" class="row" autocomplete="off">
+      <input id="ssid" name="ssid" type="hidden">
+      <label>Password (optional)
+        <input id="password" name="password" type="password" placeholder="••••••••">
+      </label>
+      <div class="row">
+        <input type="submit" value="Connect">
+        <span id="msg" class="muted"></span>
+      </div>
+    </form>
+    <div class="muted row">Leave the password blank to join open networks.</div>
+    <div class="muted row">Wi‑Fi credentials are stored by ESP‑IDF (NVS). This page stores only the last SSID.</div>
+  </fieldset>
+
+  <script>
+    (function () {
+      const netlist = document.getElementById('netlist');
+      const form = document.getElementById('cfg');
+      const ssidHidden = document.getElementById('ssid');
+      const msg = document.getElementById('msg');
+      const scanToggle = document.getElementById('scanToggle');
+      const resultsRefresh = document.getElementById('resultsRefresh');
+      const scanState = document.getElementById('scanState');
+      const staIp = document.getElementById('staIp');
+      const apIp = document.getElementById('apIp');
+      const hostnameEl = document.getElementById('hostname');
+      const staMac = document.getElementById('staMac');
+      const apMac = document.getElementById('apMac');
+      const apClients = document.getElementById('apClients');
+      const apClientCount = document.getElementById('apClientCount');
+      const connSsid = document.getElementById('connSsid');
+      const bleState = document.getElementById('bleState');
+      const uartStatus = document.getElementById('uartStatus');
+      const peerList = document.getElementById('blePeerList');
+      const peerRefresh = document.getElementById('refreshPeers');
+      const bondedCount = document.getElementById('bondedCount');
+      const forgetAll = document.getElementById('forgetAll');
+      let selected = '';
+      let lastSavedSsid = null;
+      let configureState = 'idle';
+      let lastConfigureVersion = 0;
+      let redirectTimer = null;
+      let lastPeerCount = null;
+      let peersLoading = false;
+      let peersReloadPending = false;
+
+      function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+      function syncSelectedRadios() {
+        const radios = document.querySelectorAll('input[name="ssid_radio"]');
+        radios.forEach(r => {
+          r.checked = !!selected && r.value === selected;
+        });
+      }
+
+      function setSelected(ssid) {
+        const next = (typeof ssid === 'string') ? ssid : '';
+        if (selected === next) {
+          ssidHidden.value = next;
+          syncSelectedRadios();
+          return;
+        }
+        selected = next;
+        ssidHidden.value = next;
+        syncSelectedRadios();
+      }
+
+      setSelected('');
+
+      function render(nets) {
+        if (!nets.length) { netlist.innerHTML = '<div class="muted">(no networks found)</div>'; return; }
+        const frag = document.createDocumentFragment();
+        nets.forEach(n => {
+          const label = document.createElement('label');
+          label.className = 'ssid';
+          label.innerHTML = `<input type="radio" name="ssid_radio" value="${escapeHtml(n.ssid)}">
+                <span>${escapeHtml(n.ssid)}</span>
+                <span class="rssi">rssi ${n.rssi}</span>`;
+          const input = label.querySelector('input');
+          input.checked = (selected !== '' && n.ssid === selected);
+          input.addEventListener('change', () => {
+            setSelected(input.value);
+          });
+          frag.appendChild(label);
+        });
+        netlist.innerHTML = '';
+        netlist.appendChild(frag);
+      }
+
+      function scheduleRedirect(ip) {
+        if (!ip || redirectTimer) return;
+        const next = new URL(window.location.href);
+        next.hostname = ip;
+        next.protocol = window.location.protocol;
+        next.port = window.location.port;
+        next.pathname = '/';
+        next.search = '';
+        next.hash = '';
+        if (msg.textContent.indexOf('Redirecting') === -1) {
+          msg.textContent = (msg.textContent ? msg.textContent + ' ' : '') + `Redirecting to ${ip}…`;
+        }
+        redirectTimer = setTimeout(() => {
+          window.location.href = next.toString();
+        }, 1500);
+      }
+
+      function applyConfigureStatus(cfg) {
+        if (!cfg || typeof cfg !== 'object') return;
+        const version = Number.isFinite(cfg.version) ? cfg.version : lastConfigureVersion;
+        if (version !== lastConfigureVersion) {
+          lastConfigureVersion = version;
+        }
+        const state = (cfg.state || 'idle').toLowerCase();
+        configureState = state;
+        const message = cfg.message || '';
+        if (state === 'pending') {
+          msg.textContent = message || 'connecting…';
+        } else if (state === 'success') {
+          msg.textContent = message || 'connected';
+          if (cfg.sta_ip) {
+            scheduleRedirect(cfg.sta_ip);
+          }
+        } else if (state === 'failed') {
+          msg.textContent = message || 'connection failed';
+        } else if (message) {
+          msg.textContent = message;
+        }
+      }
+
+      function renderPeers(peers) {
+        if (!peerList) return;
+        peerList.innerHTML = '';
+        if (peers === null) {
+          const div = document.createElement('div');
+          div.className = 'muted peer-empty';
+          div.textContent = 'failed to load peers';
+          peerList.appendChild(div);
+          return;
+        }
+        if (!Array.isArray(peers) || peers.length === 0) {
+          const div = document.createElement('div');
+          div.className = 'muted peer-empty';
+          div.textContent = '(no bonded devices)';
+          peerList.appendChild(div);
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        peers.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'peer';
+
+          const details = document.createElement('div');
+          details.className = 'peer-details';
+          const nameEl = document.createElement('div');
+          nameEl.className = 'peer-name';
+          const trimmedName = (p.name || '').trim();
+          nameEl.textContent = trimmedName || '(unnamed device)';
+          const meta = document.createElement('div');
+          meta.className = 'peer-meta';
+          const typeLabel = p.addr_type || 'unknown';
+          const addrLabel = p.addr || '';
+          meta.textContent = `${typeLabel} · ${addrLabel || 'unknown'}`;
+          meta.appendChild(document.createTextNode(' '));
+          const status = document.createElement('span');
+          const isConnected = !!p.connected;
+          status.className = 'peer-status ' + (isConnected ? 'connected' : 'disconnected');
+          status.textContent = isConnected ? 'connected' : 'not connected';
+          meta.appendChild(status);
+          details.appendChild(nameEl);
+          details.appendChild(meta);
+          row.appendChild(details);
+
+          const forgetBtn = document.createElement('button');
+          forgetBtn.textContent = 'Forget';
+          forgetBtn.type = 'button';
+          forgetBtn.addEventListener('click', async () => {
+            const label = trimmedName || addrLabel || p.id || 'device';
+            if (!confirm(`Forget ${label}?`)) return;
+            forgetBtn.disabled = true;
+            try {
+              const resp = await fetch('/ble/peers/' + encodeURIComponent(p.id), { method: 'DELETE' });
+              if (resp.ok) {
+                const body = await resp.json().catch(() => null);
+                if (body && typeof body.bonded_count === 'number') {
+                  bondedCount.textContent = body.bonded_count;
+                  lastPeerCount = body.bonded_count;
+                }
+                fetchPeers(true);
+              } else {
+                alert('Failed to forget device');
+              }
+            } catch (err) {
+              alert('Failed to forget device');
+            } finally {
+              forgetBtn.disabled = false;
+            }
+          });
+          row.appendChild(forgetBtn);
+          frag.appendChild(row);
+        });
+        peerList.appendChild(frag);
+      }
+
+      async function fetchPeers(force = false) {
+        if (peersLoading) {
+          if (force) {
+            peersReloadPending = true;
+          }
+          return;
+        }
+        peersLoading = true;
+        try {
+          const resp = await fetch('/ble/peers', { cache: 'no-store' });
+          if (!resp.ok) throw new Error('peers');
+          const data = await resp.json();
+          const peers = Array.isArray(data.peers) ? data.peers : [];
+          renderPeers(peers);
+          const count = Number.isFinite(data.bonded_count) ? data.bonded_count : peers.length;
+          bondedCount.textContent = count;
+          lastPeerCount = count;
+        } catch (err) {
+          renderPeers(null);
+        } finally {
+          peersLoading = false;
+          if (peersReloadPending) {
+            peersReloadPending = false;
+            fetchPeers();
+          }
+        }
+      }
+
+      async function fetchStatus() {
+        try {
+          const r = await fetch('/status', { cache: 'no-store' });
+          if (!r.ok) return;
+          const s = await r.json();
+          const staInfo = (s.sta && typeof s.sta === 'object') ? s.sta : {};
+          const apInfo = (s.ap && typeof s.ap === 'object') ? s.ap : {};
+          hostnameEl.textContent = s.hostname || '—';
+          staIp.textContent = staInfo.ip || s.sta_ip || '—';
+          apIp.textContent = apInfo.ip || s.ap_ip || '—';
+          connSsid.textContent = staInfo.ssid || s.connected_ssid || '—';
+          staMac.textContent = staInfo.mac || s.sta_mac || '—';
+          apMac.textContent = apInfo.mac || s.ap_mac || '—';
+          const clients = Array.isArray(apInfo.clients) ? apInfo.clients : [];
+          const clientCount = Number.isFinite(apInfo.client_count) ? apInfo.client_count : clients.length;
+          apClientCount.textContent = clientCount;
+          if (clients.length) {
+            apClients.textContent = clients.map(c => {
+              const mac = c && c.mac ? c.mac : '??';
+              const rssi = (c && Number.isFinite(c.rssi)) ? ` (${c.rssi} dBm)` : '';
+              return mac + rssi;
+            }).join(', ');
+          } else {
+            apClients.textContent = 'none';
+          }
+          bleState.textContent = s.ble_connected ? 'connected' : 'idle';
+          uartStatus.textContent = s.uart_seen_data ? 'data seen' : 'no data yet';
+          scanState.textContent = s.scan_active ? 'scanning' : 'idle';
+          const saved = (typeof s.last_ssid === 'string') ? s.last_ssid : '';
+          if (saved !== lastSavedSsid) {
+            lastSavedSsid = saved;
+            setSelected(saved);
+          }
+          if (s.scan_active) {
+            scanToggle.textContent = 'Stop scan';
+          } else {
+            scanToggle.textContent = 'Start scan';
+          }
+          if (typeof s.bonded_count === 'number' && isFinite(s.bonded_count)) {
+            bondedCount.textContent = s.bonded_count;
+            if (lastPeerCount === null || s.bonded_count !== lastPeerCount) {
+              fetchPeers(true);
+            }
+          }
+          applyConfigureStatus(s.configure);
+        } catch (e) {/* ignore */ }
+      }
+
+      async function fetchResults() {
+        try {
+          const r = await fetch('/scan/results', { cache: 'no-store' });
+          if (!r.ok) return;
+          const nets = await r.json();
+          nets.sort((a, b) => (b.rssi - a.rssi) || a.ssid.localeCompare(b.ssid));
+          render(nets);
+          if (configureState === 'idle') {
+            msg.textContent = 'results updated ' + new Date().toLocaleTimeString();
+          }
+        } catch (e) {
+          if (configureState === 'idle') {
+            msg.textContent = 'fetch results failed';
+          }
+        }
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const ssid = ssidHidden.value.trim();
+        const password = document.getElementById('password').value;
+        if (!ssid) { msg.textContent = 'pick an SSID'; return; }
+        if (redirectTimer) { clearTimeout(redirectTimer); redirectTimer = null; }
+        configureState = 'pending';
+        msg.textContent = 'connecting…';
+        try {
+          const r = await fetch('/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid, password })
+          });
+          if (!r.ok) {
+            configureState = 'idle';
+            msg.textContent = 'request failed';
+            return;
+          }
+          await r.text();
+          msg.textContent = 'connect request sent… awaiting status';
+        } catch (e) {
+          configureState = 'idle';
+          msg.textContent = 'request error';
+        }
+      });
+
+      resultsRefresh.addEventListener('click', fetchResults);
+      scanToggle.addEventListener('click', async () => {
+        if (scanToggle.textContent === 'Start scan') {
+          // start
+          scanToggle.disabled = true;
+          try {
+            const r = await fetch('/scan/start', { method: 'POST' });
+            if (r.ok) scanToggle.textContent = 'Stop scan';
+          } catch (e) { }
+          scanToggle.disabled = false;
+        } else {
+          // stop
+          scanToggle.disabled = true;
+          try {
+            const r = await fetch('/scan/stop', { method: 'POST' });
+            if (r.ok) scanToggle.textContent = 'Start scan';
+          } catch (e) { }
+          scanToggle.disabled = false;
+        }
+      });
+
+      if (peerRefresh) {
+        peerRefresh.addEventListener('click', () => fetchPeers(true));
+      }
+
+      // initial status + results
+      fetchStatus();
+      fetchResults();
+      fetchPeers();
+      // poll status every 2s
+      setInterval(fetchStatus, 2000);
+
+      function wsUrl() { const u = new URL('/ws', location.href); u.protocol = u.protocol.replace('http', 'ws'); return u; }
+      let ws;
+      function connectWS() {
+        ws = new WebSocket(wsUrl());
+        ws.onopen = () => console.log('ws open');
+        ws.onmessage = ev => console.log('ws:', ev.data);
+        ws.onclose = () => setTimeout(connectWS, 1000);
+      }
+      connectWS();
+      // BLE bonded controls
+      forgetAll.addEventListener('click', async () => {
+        if (!confirm('Forget all bonded BLE devices?')) return;
+        forgetAll.disabled = true;
+        try {
+          const r = await fetch('/ble/peers/forget', { method: 'POST' });
+          if (r.ok) {
+            const j = await r.json();
+            bondedCount.textContent = j.after;
+            lastPeerCount = j.after;
+            alert('Forgot ' + (j.before - j.after) + ' peers');
+            fetchPeers(true);
+          }
+        } catch (e) { }
+        forgetAll.disabled = false;
+      });
+    })();
+  </script>
+</body>
+
+</html>

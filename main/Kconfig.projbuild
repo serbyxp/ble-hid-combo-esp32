@@ -1,0 +1,24 @@
+menu "Application Wi-Fi Configuration"
+
+config APP_WIFI_SOFTAP_SSID
+    string "SoftAP SSID"
+    default "HID32"
+    help
+        SSID broadcast by the device when running in SoftAP mode.
+
+config APP_WIFI_SOFTAP_PASSWORD
+    string "SoftAP password"
+    default ""
+    help
+        Password used for the SoftAP. Leave empty to fall back to the
+        built-in provisioning password. WPA2 passwords must be at least
+        8 characters; shorter strings will start an open SoftAP.
+
+config APP_WIFI_SOFTAP_CHANNEL
+    int "SoftAP channel"
+    range 1 13
+    default 6
+    help
+        Wi-Fi channel used for the SoftAP.
+
+endmenu
