@@ -679,12 +679,32 @@ static esp_err_t ws_handler(httpd_req_t *req){
     ws_pkt.payload[payload_len] = '\0';
 
     bool decremented = false;
+    esp_err_t sret = ESP_OK;
     if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
         ws_client_dec();
         decremented = true;
     }
 
-    esp_err_t sret = httpd_ws_send_frame(req, &ws_pkt); // echo
+    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT && payload_len > 0) {
+        bool handled = uart_bridge_handle_json(reinterpret_cast<const char *>(ws_pkt.payload));
+        static constexpr const char kAckOk[] = "{\"type\":\"ws_ack\",\"status\":\"ok\"}";
+        static constexpr const char kAckErr[] = "{\"type\":\"ws_ack\",\"status\":\"error\",\"reason\":\"invalid\"}";
+        const char *resp = handled ? kAckOk : kAckErr;
+        httpd_ws_frame_t ack = {
+            .final = true,
+            .fragmented = false,
+            .type = HTTPD_WS_TYPE_TEXT,
+            .payload = (uint8_t *)resp,
+            .len = strlen(resp),
+        };
+        sret = httpd_ws_send_frame(req, &ack);
+    } else if (ws_pkt.type == HTTPD_WS_TYPE_PING) {
+        ws_pkt.type = HTTPD_WS_TYPE_PONG;
+        sret = httpd_ws_send_frame(req, &ws_pkt);
+    } else if (ws_pkt.type != HTTPD_WS_TYPE_CLOSE) {
+        sret = httpd_ws_send_frame(req, &ws_pkt); // legacy echo for other frame types
+    }
+
     if (sret != ESP_OK) {
         ESP_LOGW(TAG, "ws_handler: httpd_ws_send_frame -> %d", sret);
         if (!decremented) {
@@ -694,10 +714,10 @@ static esp_err_t ws_handler(httpd_req_t *req){
     }
 
     free(ws_pkt.payload);
-    if (ret != ESP_OK && !decremented) {
+    if (!decremented && (ret != ESP_OK || sret != ESP_OK)) {
         ws_client_dec();
     }
-    return ret;
+    return (ret != ESP_OK) ? ret : sret;
 }
 
 esp_err_t http_server_start(){

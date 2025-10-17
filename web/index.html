@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Wi‑Fi Manager</title>
+  <title>ESP32 HID Bridge</title>
   <style>
     body {
       font: 14px/1.45 system-ui, Segoe UI, Roboto, Ubuntu, sans-serif;
@@ -13,18 +13,26 @@
     }
 
     fieldset {
-      max-width: 560px;
+      max-width: 720px;
       border: 1px solid #d1d5db;
       border-radius: 12px;
       padding: 16px;
+      margin: 1.5rem 0;
     }
 
     legend {
       font-weight: 600;
+      padding: 0 0.25rem;
     }
 
     .row {
       margin: .6rem 0;
+    }
+
+    .netlist {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: .6rem .75rem;
     }
 
     .ssid {
@@ -40,11 +48,30 @@
     }
 
     button,
-    input[type=submit] {
+    input[type=submit],
+    select {
       padding: .5rem .9rem;
       border-radius: 8px;
       border: 1px solid #9ca3af;
       background: #eef;
+      font: inherit;
+    }
+
+    button:disabled,
+    input[type=submit]:disabled {
+      opacity: 0.6;
+    }
+
+    label input,
+    label select {
+      display: block;
+      margin-top: .35rem;
+      width: 100%;
+      box-sizing: border-box;
+      padding: .5rem .65rem;
+      border-radius: 8px;
+      border: 1px solid #9ca3af;
+      font: inherit;
     }
 
     .muted {
@@ -52,11 +79,19 @@
       font-size: 12px;
     }
 
+    .controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
     .peer-section {
       display: flex;
       flex-direction: column;
       gap: .6rem;
       width: 100%;
+      margin-top: 1rem;
     }
 
     .peer-header {
@@ -134,59 +169,101 @@
       text-align: center;
       padding: .4rem 0;
     }
+
+    .ws-log {
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+      padding: .6rem .75rem;
+      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      background: #f5f7ff;
+      min-height: 80px;
+    }
+
+    .test-controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
   </style>
 </head>
 
 <body>
-  <h1>Wi‑Fi Provisioning</h1>
-  <p class="muted">Connect to the ESP32 SoftAP (`ESP32-HID-Setup`) using password <code>uhid1234</code>.</p>
+  <h1>ESP32 BLE HID Bridge</h1>
+  <p class="muted">Connect to the ESP32 SoftAP (<code>ESP32-HID-Setup</code>) using password <code>uhid1234</code>.</p>
 
   <fieldset>
-    <legend>Nearby networks</legend>
-    <div id="netlist" class="row">
-      <div class="muted">(scanning…)</div>
-    </div>
-
-    <div class="row">
-      <button id="scanToggle">Start scan</button>
-      <button id="resultsRefresh">Refresh results</button>
-      <span id="scanState" class="muted"></span>
-    </div>
+    <legend>Wi‑Fi setup</legend>
 
     <div class="row muted">Hostname: <span id="hostname">—</span></div>
-    <div class="row muted">STA · IP <span id="staIp">—</span> · MAC <span id="staMac">—</span> · SSID <span
-        id="connSsid">—</span></div>
+    <div class="row muted">STA · IP <span id="staIp">—</span> · MAC <span id="staMac">—</span> · SSID <span id="connSsid">—</span></div>
     <div class="row muted">AP · IP <span id="apIp">—</span> · MAC <span id="apMac">—</span></div>
     <div class="row muted">AP clients (<span id="apClientCount">0</span>): <span id="apClients">—</span></div>
 
-    <div class="row muted">BLE <span id="bleState">—</span> · UART <span id="uartStatus">—</span></div>
+    <div class="row controls">
+      <button id="scanToggle" type="button">Start scan</button>
+      <button id="resultsRefresh" type="button">Refresh results</button>
+      <span id="scanState" class="muted"></span>
+    </div>
+
     <div class="row">
-      <div class="peer-section">
-        <div class="peer-header">
-          <span class="muted">Bonded devices (<span id="bondedCount">—</span>)</span>
-          <div class="peer-actions">
-            <button id="refreshPeers" type="button">Refresh peers</button>
-            <button id="forgetAll" type="button">Forget all</button>
-          </div>
-        </div>
-        <div id="blePeerList" class="peer-list">
-          <div class="muted peer-empty">(loading peers…)</div>
-        </div>
+      <div id="netlist" class="netlist">
+        <div class="muted">(scanning…)</div>
       </div>
     </div>
 
     <form id="cfg" class="row" autocomplete="off">
       <input id="ssid" name="ssid" type="hidden">
-      <label>Password (optional)
+      <label class="row">Password (optional)
         <input id="password" name="password" type="password" placeholder="••••••••">
       </label>
-      <div class="row">
+      <div class="row controls">
         <input type="submit" value="Connect">
         <span id="msg" class="muted"></span>
       </div>
     </form>
     <div class="muted row">Leave the password blank to join open networks.</div>
     <div class="muted row">Wi‑Fi credentials are stored by ESP‑IDF (NVS). This page stores only the last SSID.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Bluetooth HID &amp; tests</legend>
+
+    <div class="row muted">BLE status: <span id="bleState">—</span></div>
+    <div class="row muted">UART bridge: <span id="uartStatus">—</span></div>
+    <div class="row muted">WebSocket: <span id="wsStatus">connecting…</span></div>
+
+    <div class="row test-controls">
+      <label>Test payload
+        <select id="bleTestSelect">
+          <option value="mouse">Mouse wiggle (dx=10, dy=0)</option>
+          <option value="keyboard">Keyboard tap (Space)</option>
+        </select>
+      </label>
+      <button id="bleTestSend" type="button">Send test</button>
+    </div>
+    <div class="row">
+      <span id="bleTestMessage" class="muted"></span>
+    </div>
+
+    <div class="peer-section">
+      <div class="peer-header">
+        <span class="muted">Bonded devices (<span id="bondedCount">—</span>)</span>
+        <div class="peer-actions">
+          <button id="refreshPeers" type="button">Refresh peers</button>
+          <button id="forgetAll" type="button">Forget all</button>
+        </div>
+      </div>
+      <div id="blePeerList" class="peer-list">
+        <div class="muted peer-empty">(loading peers…)</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div id="wsLog" class="ws-log muted">(no WebSocket messages yet)</div>
+    </div>
   </fieldset>
 
   <script>
@@ -208,10 +285,17 @@
       const connSsid = document.getElementById('connSsid');
       const bleState = document.getElementById('bleState');
       const uartStatus = document.getElementById('uartStatus');
+      const wsStatus = document.getElementById('wsStatus');
       const peerList = document.getElementById('blePeerList');
       const peerRefresh = document.getElementById('refreshPeers');
       const bondedCount = document.getElementById('bondedCount');
       const forgetAll = document.getElementById('forgetAll');
+      const wsLog = document.getElementById('wsLog');
+      const bleTestSelect = document.getElementById('bleTestSelect');
+      const bleTestSend = document.getElementById('bleTestSend');
+      const bleTestMessage = document.getElementById('bleTestMessage');
+      const passwordInput = document.getElementById('password');
+
       let selected = '';
       let lastSavedSsid = null;
       let configureState = 'idle';
@@ -221,8 +305,9 @@
       let peersLoading = false;
       let peersReloadPending = false;
       let lastStaIpDisplay = '';
+      let ws;
 
-      function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+      function escapeHtml(s) { return s.replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c])); }
 
       function syncSelectedRadios() {
         const radios = document.querySelectorAll('input[name="ssid_radio"]');
@@ -243,6 +328,17 @@
         syncSelectedRadios();
       }
 
+      function appendWsLog(line, isError = false) {
+        if (!wsLog) return;
+        const time = new Date().toLocaleTimeString();
+        const prefix = isError ? '[error]' : '[info]';
+        const next = `${time} ${prefix} ${line}`;
+        wsLog.classList.remove('muted');
+        wsLog.textContent = wsLog.textContent && wsLog.textContent.indexOf('(no WebSocket messages yet)') === -1
+          ? wsLog.textContent + '\n' + next
+          : next;
+      }
+
       setSelected('');
 
       function render(nets) {
@@ -251,9 +347,9 @@
         nets.forEach(n => {
           const label = document.createElement('label');
           label.className = 'ssid';
-          label.innerHTML = `<input type="radio" name="ssid_radio" value="${escapeHtml(n.ssid)}">
-                <span>${escapeHtml(n.ssid)}</span>
-                <span class="rssi">rssi ${n.rssi}</span>`;
+          label.innerHTML = `<input type="radio" name="ssid_radio" value="${escapeHtml(n.ssid)}">` +
+            `<span>${escapeHtml(n.ssid)}</span>` +
+            `<span class="rssi">rssi ${n.rssi}</span>`;
           const input = label.querySelector('input');
           input.checked = (selected !== '' && n.ssid === selected);
           input.addEventListener('change', () => {
@@ -535,7 +631,7 @@
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const ssid = ssidHidden.value.trim();
-        const password = document.getElementById('password').value;
+        const password = passwordInput.value;
         if (!ssid) { msg.textContent = 'pick an SSID'; return; }
         if (redirectTimer) { clearTimeout(redirectTimer); redirectTimer = null; }
         configureState = 'pending';
@@ -562,7 +658,6 @@
       resultsRefresh.addEventListener('click', fetchResults);
       scanToggle.addEventListener('click', async () => {
         if (scanToggle.textContent === 'Start scan') {
-          // start
           scanToggle.disabled = true;
           try {
             const r = await fetch('/scan/start', { method: 'POST' });
@@ -570,7 +665,6 @@
           } catch (e) { }
           scanToggle.disabled = false;
         } else {
-          // stop
           scanToggle.disabled = true;
           try {
             const r = await fetch('/scan/stop', { method: 'POST' });
@@ -584,6 +678,74 @@
         peerRefresh.addEventListener('click', () => fetchPeers(true));
       }
 
+      function wsUrl() { const u = new URL('/ws', location.href); u.protocol = u.protocol.replace('http', 'ws'); return u; }
+
+      function setWsStatus(text) {
+        if (wsStatus) {
+          wsStatus.textContent = text;
+        }
+      }
+
+      function connectWS() {
+        try {
+          ws = new WebSocket(wsUrl());
+        } catch (err) {
+          setWsStatus('error');
+          appendWsLog('failed to create WebSocket: ' + err, true);
+          return;
+        }
+        setWsStatus('connecting…');
+        ws.onopen = () => {
+          setWsStatus('connected');
+          appendWsLog('websocket connected');
+        };
+        ws.onmessage = ev => {
+          const data = ev.data;
+          appendWsLog('rx ' + data);
+        };
+        ws.onerror = () => {
+          appendWsLog('websocket error', true);
+        };
+        ws.onclose = () => {
+          setWsStatus('disconnected');
+          appendWsLog('websocket closed', true);
+          setTimeout(connectWS, 1000);
+        };
+      }
+
+      connectWS();
+
+      async function sendBleTest() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          bleTestMessage.textContent = 'WebSocket is not connected.';
+          return;
+        }
+        const choice = bleTestSelect.value;
+        bleTestMessage.textContent = 'Sending test…';
+        if (choice === 'mouse') {
+          const payload = { type: 'mouse', dx: 10, dy: 0, wheel: 0, b1: 0, b2: 0, b3: 0 };
+          ws.send(JSON.stringify(payload));
+          appendWsLog('tx ' + JSON.stringify(payload));
+          bleTestMessage.textContent = 'Mouse wiggle sent.';
+        } else if (choice === 'keyboard') {
+          const down = { type: 'key', mods: 0, keys: [0x2C] };
+          ws.send(JSON.stringify(down));
+          appendWsLog('tx ' + JSON.stringify(down));
+          setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const up = { type: 'key', mods: 0, keys: [] };
+              ws.send(JSON.stringify(up));
+              appendWsLog('tx ' + JSON.stringify(up));
+            }
+          }, 200);
+          bleTestMessage.textContent = 'Keyboard tap sent.';
+        } else {
+          bleTestMessage.textContent = 'Unknown test selected.';
+        }
+      }
+
+      bleTestSend.addEventListener('click', sendBleTest);
+
       // initial status + results
       fetchStatus();
       fetchResults();
@@ -591,15 +753,6 @@
       // poll status every 2s
       setInterval(fetchStatus, 2000);
 
-      function wsUrl() { const u = new URL('/ws', location.href); u.protocol = u.protocol.replace('http', 'ws'); return u; }
-      let ws;
-      function connectWS() {
-        ws = new WebSocket(wsUrl());
-        ws.onopen = () => console.log('ws open');
-        ws.onmessage = ev => console.log('ws:', ev.data);
-        ws.onclose = () => setTimeout(connectWS, 1000);
-      }
-      connectWS();
       // BLE bonded controls
       forgetAll.addEventListener('click', async () => {
         if (!confirm('Forget all bonded BLE devices?')) return;
