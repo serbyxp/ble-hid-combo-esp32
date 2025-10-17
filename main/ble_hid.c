@@ -298,7 +298,7 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(TAG, "MTU updated: %d", event->mtu.value);
         break;
-    case BLE_GAP_EVENT_PAIRING_COMPLETE:
+    case BLE_GAP_EVENT_PARING_COMPLETE:
         ESP_LOGI(TAG, "Pairing complete status=%d", event->pairing_complete.status);
         if (event->pairing_complete.status == 0)
         {
