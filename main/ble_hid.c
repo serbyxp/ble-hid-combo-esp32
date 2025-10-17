@@ -381,6 +381,18 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_MANUFACTURER_NAME), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
          {.uuid = BLE_UUID16_DECLARE(UUID16_DIS_PNP_ID), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
          {0}}},
+    // Battery Service
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE),
+     .characteristics = (struct ble_gatt_chr_def[]){
+         {.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_batt,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+          .descriptors = (struct ble_gatt_dsc_def[]){
+              {.uuid = BLE_UUID16_DECLARE(UUID16_CHAR_PRESENTATION_FORMAT), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb},
+              {0}}},
+         {0}}},
     // Device ID Service
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(UUID16_DEVICE_ID_SERVICE),
@@ -423,18 +435,6 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
                .arg = (void *)(uintptr_t)((REPORT_ID_CONSUMER) | (REPORT_TYPE_INPUT << 8))},
               {0}}},
          {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .val_handle = &h_consumer_proto, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
-         {0}}},
-    // Battery Service
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
-     .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE),
-     .characteristics = (struct ble_gatt_chr_def[]){
-         {.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL),
-          .access_cb = chr_access_cb,
-          .val_handle = &h_batt,
-          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-          .descriptors = (struct ble_gatt_dsc_def[]){
-              {.uuid = BLE_UUID16_DECLARE(UUID16_CHAR_PRESENTATION_FORMAT), .att_flags = BLE_ATT_F_READ, .access_cb = dsc_access_cb},
-              {0}}},
          {0}}},
     {0}};
 
