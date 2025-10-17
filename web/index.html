@@ -212,7 +212,8 @@
     <legend>Wi‑Fi setup</legend>
 
     <div class="row muted">Hostname: <span id="hostname">—</span></div>
-    <div class="row muted">STA · IP <span id="staIp">—</span> · MAC <span id="staMac">—</span> · SSID <span id="connSsid">—</span></div>
+    <div class="row muted">STA · IP <span id="staIp">—</span> · MAC <span id="staMac">—</span> · SSID <span
+        id="connSsid">—</span></div>
     <div class="row muted">AP · IP <span id="apIp">—</span> · MAC <span id="apMac">—</span></div>
     <div class="row muted">AP clients (<span id="apClientCount">0</span>): <span id="apClients">—</span></div>
 
@@ -383,6 +384,13 @@
 
       async function resultsPollTick() {
         if (resultsPollInFlight) return;
+
+        // Check if we should still be polling BEFORE starting work
+        if (!scanActive || document.visibilityState === 'hidden') {
+          cancelResultsPoll();
+          return;
+        }
+
         resultsPollInFlight = true;
         resultsPollImmediate = false;
         try {
@@ -394,6 +402,8 @@
           const visible = document.visibilityState !== 'hidden';
           const pendingImmediate = resultsPollImmediate;
           resultsPollImmediate = false;
+
+          // Double-check scan is still active before scheduling next poll
           if (scanActive && visible) {
             const nextDelay = pendingImmediate ? 0 : RESULTS_POLL_INTERVAL_MS;
             scheduleResultsPoll(nextDelay);
@@ -458,16 +468,16 @@
         if (scanToggle) {
           scanToggle.textContent = next ? 'Stop scan' : 'Start scan';
         }
-        if (next === scanActive) {
-          if (!next) {
-            cancelResultsPoll();
-          }
-          return;
-        }
+
+        const wasActive = scanActive;
         scanActive = next;
-        if (scanActive) {
+
+        // Start or stop polling based on state change
+        if (scanActive && !wasActive) {
+          // Just became active - start polling
           requestImmediateResultsPoll();
-        } else {
+        } else if (!scanActive && wasActive) {
+          // Just became inactive - stop polling
           cancelResultsPoll();
         }
       }
@@ -523,6 +533,12 @@
 
       function scheduleRedirect(ip, url) {
         if (!ip || redirectTimer) return;
+
+        // Only redirect if we're currently on the AP interface
+        const currentHostname = window.location.hostname;
+        // Don't redirect if we're already on the target IP
+        if (currentHostname === ip) return;
+
         let next = null;
         if (typeof url === 'string' && url) {
           try {
@@ -785,6 +801,7 @@
       resultsRefresh.addEventListener('click', () => {
         fetchResults(false);
       });
+
       scanToggle.addEventListener('click', async () => {
         if (scanToggle.textContent === 'Start scan') {
           scanToggle.disabled = true;
@@ -852,30 +869,46 @@
 
       async function sendBleTest() {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          bleTestMessage.textContent = 'WebSocket is not connected.';
+          bleTestMessage.textContent = 'WebSocket not connected. Wait for connection...';
+          bleTestMessage.style.color = '#dc2626';
           return;
         }
         const choice = bleTestSelect.value;
         bleTestMessage.textContent = 'Sending test…';
-        if (choice === 'mouse') {
-          const payload = { type: 'mouse', dx: 10, dy: 0, wheel: 0, b1: 0, b2: 0, b3: 0 };
-          ws.send(JSON.stringify(payload));
-          appendWsLog('tx ' + JSON.stringify(payload));
-          bleTestMessage.textContent = 'Mouse wiggle sent.';
-        } else if (choice === 'keyboard') {
-          const down = { type: 'key', mods: 0, keys: [0x2C] };
-          ws.send(JSON.stringify(down));
-          appendWsLog('tx ' + JSON.stringify(down));
-          setTimeout(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              const up = { type: 'key', mods: 0, keys: [] };
-              ws.send(JSON.stringify(up));
-              appendWsLog('tx ' + JSON.stringify(up));
-            }
-          }, 200);
-          bleTestMessage.textContent = 'Keyboard tap sent.';
-        } else {
-          bleTestMessage.textContent = 'Unknown test selected.';
+        bleTestMessage.style.color = '';
+
+        try {
+          if (choice === 'mouse') {
+            const payload = { type: 'mouse', dx: 10, dy: 0, wheel: 0, b1: 0, b2: 0, b3: 0 };
+            ws.send(JSON.stringify(payload));
+            appendWsLog('tx ' + JSON.stringify(payload));
+            bleTestMessage.textContent = 'Mouse wiggle sent. Check if cursor moved.';
+            bleTestMessage.style.color = '#059669';
+          } else if (choice === 'keyboard') {
+            // Send key down
+            const down = { type: 'key', mods: 0, keys: [0x2C] };
+            ws.send(JSON.stringify(down));
+            appendWsLog('tx ' + JSON.stringify(down));
+            bleTestMessage.textContent = 'Sending space key...';
+
+            // Wait then send key up
+            setTimeout(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                const up = { type: 'key', mods: 0, keys: [] };
+                ws.send(JSON.stringify(up));
+                appendWsLog('tx ' + JSON.stringify(up));
+                bleTestMessage.textContent = 'Space key sent. Check if it typed a space.';
+                bleTestMessage.style.color = '#059669';
+              }
+            }, 100);
+          } else {
+            bleTestMessage.textContent = 'Unknown test selected.';
+            bleTestMessage.style.color = '#dc2626';
+          }
+        } catch (err) {
+          bleTestMessage.textContent = 'Failed to send: ' + err.message;
+          bleTestMessage.style.color = '#dc2626';
+          appendWsLog('send error: ' + err, true);
         }
       }
 
