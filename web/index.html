@@ -45,6 +45,8 @@
     .rssi {
       font-size: 12px;
       color: #6b7280;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
 
     button,
@@ -62,7 +64,7 @@
       opacity: 0.6;
     }
 
-    label input,
+    label input:not([type=radio]):not([type=checkbox]),
     label select {
       display: block;
       margin-top: .35rem;
@@ -72,6 +74,18 @@
       border-radius: 8px;
       border: 1px solid #9ca3af;
       font: inherit;
+    }
+
+    .ssid input[type=radio] {
+      width: auto;
+      margin: 0;
+      display: inline-flex;
+      flex: 0 0 auto;
+    }
+
+    .ssid-name {
+      flex: 1;
+      min-width: 0;
     }
 
     .muted {
@@ -306,6 +320,17 @@
       let peersReloadPending = false;
       let lastStaIpDisplay = '';
       let ws;
+      let statusPollTimer = null;
+      let statusPollInFlight = false;
+      let statusPollImmediate = false;
+      const STATUS_POLL_ACTIVE_MS = 2000;
+      const STATUS_POLL_IDLE_MS = 6000;
+      const STATUS_POLL_HIDDEN_MS = 15000;
+      let scanActive = false;
+      let resultsPollTimer = null;
+      let resultsPollInFlight = false;
+      let resultsPollImmediate = false;
+      const RESULTS_POLL_INTERVAL_MS = 5000;
 
       function escapeHtml(s) { return s.replace(/[&<>\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c])); }
 
@@ -341,6 +366,112 @@
 
       setSelected('');
 
+      function cancelResultsPoll() {
+        if (resultsPollTimer) {
+          clearTimeout(resultsPollTimer);
+          resultsPollTimer = null;
+        }
+        resultsPollImmediate = false;
+      }
+
+      function scheduleResultsPoll(delay) {
+        if (resultsPollTimer) {
+          clearTimeout(resultsPollTimer);
+        }
+        resultsPollTimer = setTimeout(resultsPollTick, Math.max(0, delay));
+      }
+
+      async function resultsPollTick() {
+        if (resultsPollInFlight) return;
+        resultsPollInFlight = true;
+        resultsPollImmediate = false;
+        try {
+          await fetchResults(true);
+        } catch (err) {
+          /* fetchResults already reports errors */
+        } finally {
+          resultsPollInFlight = false;
+          const visible = document.visibilityState !== 'hidden';
+          const pendingImmediate = resultsPollImmediate;
+          resultsPollImmediate = false;
+          if (scanActive && visible) {
+            const nextDelay = pendingImmediate ? 0 : RESULTS_POLL_INTERVAL_MS;
+            scheduleResultsPoll(nextDelay);
+          } else {
+            cancelResultsPoll();
+          }
+        }
+      }
+
+      function scheduleStatusPoll(delay) {
+        if (statusPollTimer) {
+          clearTimeout(statusPollTimer);
+        }
+        statusPollTimer = setTimeout(statusPollTick, Math.max(0, delay));
+      }
+
+      async function statusPollTick() {
+        if (statusPollInFlight) return;
+        statusPollInFlight = true;
+        statusPollImmediate = false;
+        try {
+          await fetchStatus();
+        } catch (err) {
+          /* ignore individual poll errors */
+        } finally {
+          statusPollInFlight = false;
+          const visible = document.visibilityState !== 'hidden';
+          const pendingImmediate = statusPollImmediate;
+          statusPollImmediate = false;
+          const baseDelay = visible
+            ? (scanActive ? STATUS_POLL_ACTIVE_MS : STATUS_POLL_IDLE_MS)
+            : STATUS_POLL_HIDDEN_MS;
+          const nextDelay = pendingImmediate ? 0 : baseDelay;
+          scheduleStatusPoll(nextDelay);
+        }
+      }
+
+      function requestImmediateStatusPoll() {
+        if (statusPollInFlight) {
+          statusPollImmediate = true;
+        } else {
+          statusPollTick();
+        }
+      }
+
+      function requestImmediateResultsPoll() {
+        if (!scanActive || document.visibilityState === 'hidden') {
+          resultsPollImmediate = true;
+          return;
+        }
+        resultsPollImmediate = true;
+        if (!resultsPollInFlight) {
+          resultsPollTick();
+        }
+      }
+
+      function updateScanState(active) {
+        const next = !!active;
+        if (scanState) {
+          scanState.textContent = next ? 'scanning' : 'idle';
+        }
+        if (scanToggle) {
+          scanToggle.textContent = next ? 'Stop scan' : 'Start scan';
+        }
+        if (next === scanActive) {
+          if (!next) {
+            cancelResultsPoll();
+          }
+          return;
+        }
+        scanActive = next;
+        if (scanActive) {
+          requestImmediateResultsPoll();
+        } else {
+          cancelResultsPoll();
+        }
+      }
+
       function render(nets) {
         if (!nets.length) { netlist.innerHTML = '<div class="muted">(no networks found)</div>'; return; }
         const frag = document.createDocumentFragment();
@@ -348,7 +479,7 @@
           const label = document.createElement('label');
           label.className = 'ssid';
           label.innerHTML = `<input type="radio" name="ssid_radio" value="${escapeHtml(n.ssid)}">` +
-            `<span>${escapeHtml(n.ssid)}</span>` +
+            `<span class="ssid-name">${escapeHtml(n.ssid)}</span>` +
             `<span class="rssi">rssi ${n.rssi}</span>`;
           const input = label.querySelector('input');
           input.checked = (selected !== '' && n.ssid === selected);
@@ -590,16 +721,12 @@
           }
           bleState.textContent = s.ble_connected ? 'connected' : 'idle';
           uartStatus.textContent = s.uart_seen_data ? 'data seen' : 'no data yet';
-          scanState.textContent = s.scan_active ? 'scanning' : 'idle';
+          const isScanActive = !!s.scan_active;
+          updateScanState(isScanActive);
           const saved = (typeof s.last_ssid === 'string') ? s.last_ssid : '';
           if (saved !== lastSavedSsid) {
             lastSavedSsid = saved;
             setSelected(saved);
-          }
-          if (s.scan_active) {
-            scanToggle.textContent = 'Stop scan';
-          } else {
-            scanToggle.textContent = 'Start scan';
           }
           if (typeof s.bonded_count === 'number' && isFinite(s.bonded_count)) {
             bondedCount.textContent = s.bonded_count;
@@ -611,18 +738,18 @@
         } catch (e) {/* ignore */ }
       }
 
-      async function fetchResults() {
+      async function fetchResults(quiet = false) {
         try {
           const r = await fetch('/scan/results', { cache: 'no-store' });
           if (!r.ok) return;
           const nets = await r.json();
           nets.sort((a, b) => (b.rssi - a.rssi) || a.ssid.localeCompare(b.ssid));
           render(nets);
-          if (configureState === 'idle') {
+          if (!quiet && configureState === 'idle') {
             msg.textContent = 'results updated ' + new Date().toLocaleTimeString();
           }
         } catch (e) {
-          if (configureState === 'idle') {
+          if (!quiet && configureState === 'idle') {
             msg.textContent = 'fetch results failed';
           }
         }
@@ -655,20 +782,28 @@
         }
       });
 
-      resultsRefresh.addEventListener('click', fetchResults);
+      resultsRefresh.addEventListener('click', () => {
+        fetchResults(false);
+      });
       scanToggle.addEventListener('click', async () => {
         if (scanToggle.textContent === 'Start scan') {
           scanToggle.disabled = true;
           try {
             const r = await fetch('/scan/start', { method: 'POST' });
-            if (r.ok) scanToggle.textContent = 'Stop scan';
+            if (r.ok) {
+              updateScanState(true);
+              requestImmediateStatusPoll();
+            }
           } catch (e) { }
           scanToggle.disabled = false;
         } else {
           scanToggle.disabled = true;
           try {
             const r = await fetch('/scan/stop', { method: 'POST' });
-            if (r.ok) scanToggle.textContent = 'Start scan';
+            if (r.ok) {
+              updateScanState(false);
+              requestImmediateStatusPoll();
+            }
           } catch (e) { }
           scanToggle.disabled = false;
         }
@@ -746,12 +881,21 @@
 
       bleTestSend.addEventListener('click', sendBleTest);
 
-      // initial status + results
-      fetchStatus();
+      // initial data + polling
       fetchResults();
       fetchPeers();
-      // poll status every 2s
-      setInterval(fetchStatus, 2000);
+      statusPollTick();
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          cancelResultsPoll();
+        } else {
+          requestImmediateStatusPoll();
+          if (scanActive) {
+            requestImmediateResultsPoll();
+          }
+        }
+      });
 
       // BLE bonded controls
       forgetAll.addEventListener('click', async () => {
