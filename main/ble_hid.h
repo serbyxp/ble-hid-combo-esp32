@@ -12,6 +12,7 @@ extern "C"
     void ble_hid_notify_mouse(int8_t dx, int8_t dy, int8_t wheel, uint8_t buttons);
     void ble_hid_kbd_set(uint8_t modifiers, const uint8_t keys[6]);
     void ble_hid_notify_kbd(void);
+    void ble_hid_notify_consumer(uint16_t usage);
     void ble_hid_set_battery(uint8_t pct);
 
     typedef void (*kbd_out_cb_t)(const uint8_t report[8]);

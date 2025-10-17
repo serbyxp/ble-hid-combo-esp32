@@ -50,16 +50,23 @@ static ble_addr_t s_connected_peer = {0};
 // Appearance Mouse
 #define APPEARANCE_MOUSE 962
 
+// Report IDs
+#define REPORT_ID_MOUSE 1
+#define REPORT_ID_KEYBOARD 2
+#define REPORT_ID_CONSUMER 3
+
 // Report state
 static uint8_t s_mouse_state[4] = {0};
 static uint8_t s_kbd_in[8] = {0};
 static uint8_t s_kbd_out[8] = {0};
+static uint8_t s_consumer_state[2] = {0};
 static uint8_t s_batt = 100;
 static kbd_out_cb_t s_kbd_cb = NULL;
 
 static uint16_t h_mouse_rep = 0;
 static uint16_t h_kbd_in = 0;
 static uint16_t h_kbd_out = 0;
+static uint16_t h_consumer_in = 0;
 static uint16_t h_batt = 0;
 
 static int gap_event(struct ble_gap_event *event, void *arg);
@@ -103,6 +110,13 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                 return 0;
             }
         }
+        else if (attr_handle == h_consumer_in)
+        {
+            if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+            {
+                return os_mbuf_append(ctxt->om, s_consumer_state, sizeof(s_consumer_state)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            }
+        }
     }
     else if (uuid == UUID16_BATT_LEVEL)
     {
@@ -139,18 +153,22 @@ static int dsc_access_cb(uint16_t conn_handle, uint16_t attr_handle,
 
 // Predefined Report Maps (verbatim)
 static const uint8_t MOUSE_REPORT[] = {
-    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x01, 0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, REPORT_ID_MOUSE, 0x09, 0x01, 0xA1, 0x00,
     0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01, 0x95, 0x03,
     0x75, 0x01, 0x81, 0x02, 0x95, 0x01, 0x75, 0x05, 0x81, 0x03, 0x05, 0x01,
     0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08,
     0x95, 0x03, 0x81, 0x06, 0xC0, 0xC0};
 static const uint8_t KEYBOARD_REPORT[] = {
-    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, 0x02, 0x75, 0x01, 0x95, 0x08,
+    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, REPORT_ID_KEYBOARD, 0x75, 0x01, 0x95, 0x08,
     0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01, 0x81, 0x02,
     0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x05, 0x75, 0x01, 0x05, 0x08,
     0x19, 0x01, 0x29, 0x05, 0x91, 0x02, 0x95, 0x01, 0x75, 0x03, 0x91, 0x01,
     0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07, 0x19, 0x00,
     0x29, 0x65, 0x81, 0x00, 0xC0};
+static const uint8_t CONSUMER_REPORT[] = {
+    0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x85, REPORT_ID_CONSUMER, 0x15, 0x00,
+    0x26, 0x9C, 0x02, 0x19, 0x00, 0x2A, 0x9C, 0x02, 0x95, 0x01, 0x75, 0x10,
+    0x81, 0x00, 0xC0};
 
 static int start_advertising(const char *name);
 
@@ -163,6 +181,10 @@ static int repmap_kbd_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_
 {
     return os_mbuf_append(ctxt->om, KEYBOARD_REPORT, sizeof(KEYBOARD_REPORT)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
+static int repmap_consumer_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    return os_mbuf_append(ctxt->om, CONSUMER_REPORT, sizeof(CONSUMER_REPORT)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
 
 static const struct ble_gatt_svc_def gatt_svcs[] = {
     // Mouse HID service (RID=1)
@@ -173,11 +195,30 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
             {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_mouse_cb, .flags = BLE_GATT_CHR_F_READ},
             {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
-            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((1) | (REPORT_TYPE_INPUT << 8))}, {0}}},
+            {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_mouse_rep, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_MOUSE) | (REPORT_TYPE_INPUT << 8))}, {0}}},
             {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
             {0}}},
     // Keyboard HID service (RID=2)
-    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((2) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC}, {0}}},
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_kbd_cb, .flags = BLE_GATT_CHR_F_READ}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_in, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT), .access_cb = chr_access_cb, .val_handle = &h_kbd_out, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_NOTIFY, .descriptors = (struct ble_gatt_dsc_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF), .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC, .access_cb = dsc_access_cb, .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))}, {0}}}, {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC}, {0}}},
+    // Consumer control HID service (RID=3)
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = BLE_UUID16_DECLARE(UUID16_HID_SERVICE),
+     .characteristics = (struct ble_gatt_chr_def[]){
+         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_INFO), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_MAP), .access_cb = repmap_consumer_cb, .flags = BLE_GATT_CHR_F_READ},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_CTRL), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_WRITE_NO_RSP},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_consumer_in,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY,
+          .descriptors = (struct ble_gatt_dsc_def[]){
+              {.uuid = BLE_UUID16_DECLARE(UUID16_REPORT_REF),
+               .att_flags = BLE_ATT_F_READ | BLE_ATT_F_READ_ENC,
+               .access_cb = dsc_access_cb,
+               .arg = (void *)(uintptr_t)((REPORT_ID_CONSUMER) | (REPORT_TYPE_INPUT << 8))},
+              {0}}},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_PROTO_MODE), .access_cb = chr_access_cb, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC},
+         {0}}},
     // Battery Service
     {.type = BLE_GATT_SVC_TYPE_PRIMARY, .uuid = BLE_UUID16_DECLARE(UUID16_BAS_SERVICE), .characteristics = (struct ble_gatt_chr_def[]){{.uuid = BLE_UUID16_DECLARE(UUID16_BATT_LEVEL), .access_cb = chr_access_cb, .val_handle = &h_batt, .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY}, {0}}},
     {0}};
@@ -487,6 +528,16 @@ void ble_hid_notify_kbd(void)
     if (h_kbd_in)
     {
         ble_gatts_chr_updated(h_kbd_in);
+    }
+}
+
+void ble_hid_notify_consumer(uint16_t usage)
+{
+    s_consumer_state[0] = usage & 0xFF;
+    s_consumer_state[1] = (usage >> 8) & 0xFF;
+    if (h_consumer_in)
+    {
+        ble_gatts_chr_updated(h_consumer_in);
     }
 }
 
