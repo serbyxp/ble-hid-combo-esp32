@@ -115,6 +115,7 @@ the ready status message.
 - `main/ble_hid.c` — NimBLE GATT server with:
   - **HID Info (2A4A), Report Map (2A4B), Control Point (2A4C), Report (2A4D), Protocol Mode (2A4E)** per service,
   - **Report Reference descriptor (2908)** set to `(RID, type)` → Mouse `(1, INPUT)`, Keyboard IN `(2, INPUT)`, OUT `(2, OUTPUT)`.
+  - **Boot Mouse Input (2A33)** mirrors the first three bytes of the five-byte mouse report; protocol mode switches between boot notifications on 2A33 and full report-mode updates on 2A4D.
   - Notify helpers: `ble_hid_notify_mouse()`, `ble_hid_kbd_set()`, `ble_hid_notify_kbd()`, `ble_hid_set_battery()`.
 
 - `main/wifi_mgr.cpp` — STA first, AP fallback; `wifi_scan()` for `/scan`.
