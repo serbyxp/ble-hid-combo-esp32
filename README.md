@@ -46,6 +46,7 @@ idf.py build flash monitor
 ```json
 {"type":"mouse","dx":10,"dy":-5,"wheel":0,"b1":1,"b2":0,"b3":0}
 {"type":"key","mods":2,"keys":[0x04,0,0,0,0,0]}
+{"type":"consumer","usage":0x00B5}
 {"type":"battery","pct":50}
 {"type":"config","wifi":true,"web":true,"uart":true}
 ```
@@ -99,6 +100,9 @@ These steps exercise the protocol switch and ensure the reduced three-byte boot 
 
   # Update battery percentage
   python3 tools/uart_client.py battery 75
+
+  # Send a consumer control usage (volume up)
+  python3 tools/uart_client.py consumer 0x00E9
 
   # Toggle features
   python3 tools/uart_client.py config --wifi on --web off

@@ -143,6 +143,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Up to 6 key codes (decimal or hex)",
     )
 
+    consumer = sub.add_parser("consumer", help="Send a consumer control usage")
+    consumer.add_argument(
+        "usage",
+        type=lambda s: int(s, 0),
+        nargs="?",
+        help="16-bit usage value (decimal or hex)",
+    )
+    consumer.add_argument("--lo", type=lambda s: int(s, 0), help="Low byte of the usage (decimal or hex)")
+    consumer.add_argument("--hi", type=lambda s: int(s, 0), help="High byte of the usage (decimal or hex)")
+
     battery = sub.add_parser("battery", help="Update reported battery percentage")
     battery.add_argument("pct", type=int, help="Battery percent 0-100")
 
@@ -186,6 +196,21 @@ def run(args: argparse.Namespace) -> None:
                 "mods": args.mods,
                 "keys": parse_keys(args.keys),
             }
+            send_json(ser, payload)
+        elif args.command == "consumer":
+            if args.usage is not None:
+                usage = max(0, min(0xFFFF, args.usage))
+                payload = {"type": "consumer", "usage": usage}
+            else:
+                if args.lo is None or args.hi is None:
+                    raise SystemExit("Specify either a usage value or both --lo and --hi")
+                usage_lo = max(0, min(0xFF, args.lo))
+                usage_hi = max(0, min(0xFF, args.hi))
+                payload = {
+                    "type": "consumer",
+                    "usage_low": usage_lo,
+                    "usage_high": usage_hi,
+                }
             send_json(ser, payload)
         elif args.command == "battery":
             pct = max(0, min(100, args.pct))

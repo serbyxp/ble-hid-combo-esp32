@@ -255,6 +255,7 @@
         <select id="bleTestSelect">
           <option value="mouse">Mouse wiggle (dx=10, dy=0)</option>
           <option value="keyboard">Keyboard tap (Space)</option>
+          <option value="consumer">Consumer control (Volume Up)</option>
         </select>
       </label>
       <button id="bleTestSend" type="button">Send test</button>
@@ -901,6 +902,12 @@
                 bleTestMessage.style.color = '#059669';
               }
             }, 100);
+          } else if (choice === 'consumer') {
+            const payload = { type: 'consumer', usage: 0x00E9 };
+            ws.send(JSON.stringify(payload));
+            appendWsLog('tx ' + JSON.stringify(payload));
+            bleTestMessage.textContent = 'Consumer control sent (Volume Up usage).';
+            bleTestMessage.style.color = '#059669';
           } else {
             bleTestMessage.textContent = 'Unknown test selected.';
             bleTestMessage.style.color = '#dc2626';
