@@ -45,6 +45,8 @@ static ble_addr_t s_connected_peer = {0};
 #define UUID16_HID_CTRL 0x2A4C
 #define UUID16_HID_REPORT 0x2A4D
 #define UUID16_PROTO_MODE 0x2A4E
+#define UUID16_BOOT_KBD_INPUT 0x2A22
+#define UUID16_BOOT_KBD_OUTPUT 0x2A32
 #define UUID16_BATT_LEVEL 0x2A19
 #define UUID16_DIS_MODEL_NUMBER 0x2A24
 #define UUID16_DIS_SERIAL_NUMBER 0x2A25
@@ -85,6 +87,8 @@ static kbd_out_cb_t s_kbd_cb = NULL;
 static uint16_t h_mouse_rep = 0;
 static uint16_t h_kbd_in = 0;
 static uint16_t h_kbd_out = 0;
+static uint16_t h_boot_kbd_in = 0;
+static uint16_t h_boot_kbd_out = 0;
 static uint16_t h_consumer_in = 0;
 static uint16_t h_batt = 0;
 static uint16_t h_hid_ctrl = 0;
@@ -97,6 +101,21 @@ static uint8_t s_hid_proto_mode = 1;
 static inline bool hid_proto_is_boot(void)
 {
     return s_hid_proto_mode == 0;
+}
+
+static int handle_kbd_out_write(struct ble_gatt_access_ctxt *ctxt)
+{
+    int len = OS_MBUF_PKTLEN(ctxt->om);
+    if (len > (int)sizeof(s_kbd_out))
+    {
+        len = sizeof(s_kbd_out);
+    }
+    os_mbuf_copydata(ctxt->om, 0, len, s_kbd_out);
+    if (s_kbd_cb)
+    {
+        s_kbd_cb(s_kbd_out);
+    }
+    return 0;
 }
 
 static const uint8_t DIS_MODEL_NUMBER[24] = "1";
@@ -166,13 +185,7 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             }
             else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR)
             {
-                int len = OS_MBUF_PKTLEN(ctxt->om);
-                if (len > 8)
-                    len = 8;
-                os_mbuf_copydata(ctxt->om, 0, len, s_kbd_out);
-                if (s_kbd_cb)
-                    s_kbd_cb(s_kbd_out);
-                return 0;
+                return handle_kbd_out_write(ctxt);
             }
         }
         else if (attr_handle == h_consumer_in)
@@ -181,6 +194,24 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             {
                 return os_mbuf_append(ctxt->om, s_consumer_state, sizeof(s_consumer_state)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             }
+        }
+    }
+    else if (uuid == UUID16_BOOT_KBD_INPUT)
+    {
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+        {
+            return os_mbuf_append(ctxt->om, s_kbd_in, sizeof(s_kbd_in)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+    }
+    else if (uuid == UUID16_BOOT_KBD_OUTPUT)
+    {
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+        {
+            return os_mbuf_append(ctxt->om, s_kbd_out, sizeof(s_kbd_out)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR)
+        {
+            return handle_kbd_out_write(ctxt);
         }
     }
     else if (uuid == UUID16_HID_CTRL)
@@ -397,6 +428,10 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
                .access_cb = dsc_access_cb,
                .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_INPUT << 8))},
               {0}}},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_BOOT_KBD_INPUT),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_boot_kbd_in,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY},
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
           .access_cb = chr_access_cb,
           .val_handle = &h_kbd_out,
@@ -407,6 +442,10 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
                .access_cb = dsc_access_cb,
                .arg = (void *)(uintptr_t)((REPORT_ID_KEYBOARD) | (REPORT_TYPE_OUTPUT << 8))},
               {0}}},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_BOOT_KBD_OUTPUT),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_boot_kbd_out,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP},
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
           .access_cb = chr_access_cb,
           .val_handle = &h_consumer_in,
@@ -753,27 +792,17 @@ void ble_hid_kbd_set(uint8_t modifiers, const uint8_t keys[6])
 
 void ble_hid_notify_kbd(void)
 {
-    if (hid_proto_is_boot())
+    const bool boot_mode = hid_proto_is_boot();
+    uint16_t handle = boot_mode ? h_boot_kbd_in : h_kbd_in;
+    if (handle)
     {
-        // Boot protocol hosts expect the dedicated boot keyboard characteristic.
-        // We intentionally skip composite keyboard notifications while in boot mode
-        // so the host falls back to the boot keyboard input report (tested on iOS 17).
-        return;
-    }
-    if (h_kbd_in)
-    {
-        ble_gatts_chr_updated(h_kbd_in);
-        notify_value(h_kbd_in, s_kbd_in, sizeof(s_kbd_in));
+        ble_gatts_chr_updated(handle);
+        notify_value(handle, s_kbd_in, sizeof(s_kbd_in));
     }
 }
 
 void ble_hid_notify_consumer(uint16_t usage)
 {
-    if (hid_proto_is_boot())
-    {
-        // Boot protocol profiles do not include consumer control input reports.
-        return;
-    }
     s_consumer_state[0] = usage & 0xFF;
     s_consumer_state[1] = (usage >> 8) & 0xFF;
     if (h_consumer_in)
