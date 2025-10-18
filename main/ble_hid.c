@@ -94,6 +94,11 @@ static uint16_t h_report_map = 0;
 static uint8_t s_hid_ctrl_point = 0;
 static uint8_t s_hid_proto_mode = 1;
 
+static inline bool hid_proto_is_boot(void)
+{
+    return s_hid_proto_mode == 0;
+}
+
 static const uint8_t DIS_MODEL_NUMBER[24] = "1";
 static const uint8_t DIS_SERIAL_NUMBER[16] = "1";
 static const uint8_t DIS_FIRMWARE_REVISION[8] = "1";
@@ -721,15 +726,20 @@ void ble_hid_restart_advertising(void)
 
 void ble_hid_notify_mouse(int8_t dx, int8_t dy, int8_t wheel, uint8_t buttons)
 {
+    const bool boot_mode = hid_proto_is_boot();
+
     s_mouse_state[0] = buttons;
     s_mouse_state[1] = dx;
     s_mouse_state[2] = dy;
-    s_mouse_state[3] = wheel;
+    s_mouse_state[3] = boot_mode ? 0 : wheel;
     s_mouse_state[4] = 0;
+
     if (h_mouse_rep)
     {
+        const size_t report_len = boot_mode ? 3 : sizeof(s_mouse_state);
+
         ble_gatts_chr_updated(h_mouse_rep);
-        notify_value(h_mouse_rep, s_mouse_state, sizeof(s_mouse_state));
+        notify_value(h_mouse_rep, s_mouse_state, report_len);
     }
 }
 
@@ -743,6 +753,13 @@ void ble_hid_kbd_set(uint8_t modifiers, const uint8_t keys[6])
 
 void ble_hid_notify_kbd(void)
 {
+    if (hid_proto_is_boot())
+    {
+        // Boot protocol hosts expect the dedicated boot keyboard characteristic.
+        // We intentionally skip composite keyboard notifications while in boot mode
+        // so the host falls back to the boot keyboard input report (tested on iOS 17).
+        return;
+    }
     if (h_kbd_in)
     {
         ble_gatts_chr_updated(h_kbd_in);
@@ -752,6 +769,11 @@ void ble_hid_notify_kbd(void)
 
 void ble_hid_notify_consumer(uint16_t usage)
 {
+    if (hid_proto_is_boot())
+    {
+        // Boot protocol profiles do not include consumer control input reports.
+        return;
+    }
     s_consumer_state[0] = usage & 0xFF;
     s_consumer_state[1] = (usage >> 8) & 0xFF;
     if (h_consumer_in)

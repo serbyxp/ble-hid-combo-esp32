@@ -69,6 +69,17 @@ confirm the connection is open.
 
 4. Append `--listen` to leave the connection open and print reports from the firmware.
 
+### Manual boot-protocol verification
+
+Use these steps after flashing to confirm the boot mouse flow on iOS (last verified with iOS 17.5):
+
+1. Pair the ESP32 from **Settings → Bluetooth** and connect as usual.
+2. In **Settings → Accessibility → Touch → AssistiveTouch → Devices**, select the ESP32 and toggle **Use Mouse Keys** off/on to force the host into boot protocol mode.
+3. Drag on the touchpad area—only XY movement and button clicks should register; scroll events are intentionally suppressed in boot mode.
+4. Return to the AssistiveTouch device screen and toggle back to the normal profile; scroll and consumer keys resume once the host re-selects report protocol mode.
+
+These steps exercise the protocol switch and ensure the reduced three-byte boot mouse report is accepted by iOS.
+
 ## UART CLI helper
 
 - Requires Python 3 with [`pyserial`](https://pypi.org/project/pyserial/):
