@@ -47,6 +47,7 @@ static ble_addr_t s_connected_peer = {0};
 #define UUID16_PROTO_MODE 0x2A4E
 #define UUID16_BOOT_KBD_INPUT 0x2A22
 #define UUID16_BOOT_KBD_OUTPUT 0x2A32
+#define UUID16_BOOT_MOUSE_INPUT 0x2A33
 #define UUID16_BATT_LEVEL 0x2A19
 #define UUID16_DIS_MODEL_NUMBER 0x2A24
 #define UUID16_DIS_SERIAL_NUMBER 0x2A25
@@ -76,7 +77,7 @@ static ble_addr_t s_connected_peer = {0};
 #define REPORT_ID_KEYBOARD 2
 #define REPORT_ID_CONSUMER 3
 
-// Report state
+// Report state (boot protocol reuses first three bytes of s_mouse_state)
 static uint8_t s_mouse_state[5] = {0};
 static uint8_t s_kbd_in[8] = {0};
 static uint8_t s_kbd_out[8] = {0};
@@ -85,6 +86,7 @@ static uint8_t s_batt = 100;
 static kbd_out_cb_t s_kbd_cb = NULL;
 
 static uint16_t h_mouse_rep = 0;
+static uint16_t h_boot_mouse = 0;
 static uint16_t h_kbd_in = 0;
 static uint16_t h_kbd_out = 0;
 static uint16_t h_boot_kbd_in = 0;
@@ -194,6 +196,13 @@ static int chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             {
                 return os_mbuf_append(ctxt->om, s_consumer_state, sizeof(s_consumer_state)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             }
+        }
+    }
+    else if (uuid == UUID16_BOOT_MOUSE_INPUT)
+    {
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR)
+        {
+            return os_mbuf_append(ctxt->om, s_mouse_state, 3) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
     }
     else if (uuid == UUID16_BOOT_KBD_INPUT)
@@ -418,6 +427,10 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
                .access_cb = dsc_access_cb,
                .arg = (void *)(uintptr_t)((REPORT_ID_MOUSE) | (REPORT_TYPE_INPUT << 8))},
               {0}}},
+         {.uuid = BLE_UUID16_DECLARE(UUID16_BOOT_MOUSE_INPUT),
+          .access_cb = chr_access_cb,
+          .val_handle = &h_boot_mouse,
+          .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY},
          {.uuid = BLE_UUID16_DECLARE(UUID16_HID_REPORT),
           .access_cb = chr_access_cb,
           .val_handle = &h_kbd_in,
@@ -773,12 +786,13 @@ void ble_hid_notify_mouse(int8_t dx, int8_t dy, int8_t wheel, uint8_t buttons)
     s_mouse_state[3] = boot_mode ? 0 : wheel;
     s_mouse_state[4] = 0;
 
-    if (h_mouse_rep)
-    {
-        const size_t report_len = boot_mode ? 3 : sizeof(s_mouse_state);
+    const uint16_t handle = boot_mode ? h_boot_mouse : h_mouse_rep;
+    const size_t report_len = boot_mode ? 3 : sizeof(s_mouse_state);
 
-        ble_gatts_chr_updated(h_mouse_rep);
-        notify_value(h_mouse_rep, s_mouse_state, report_len);
+    if (handle)
+    {
+        ble_gatts_chr_updated(handle);
+        notify_value(handle, s_mouse_state, report_len);
     }
 }
 
