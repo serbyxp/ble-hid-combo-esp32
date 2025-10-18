@@ -68,6 +68,33 @@ bool uart_bridge_handle_json(const char *s)
         ble_hid_set_battery((uint8_t)pct);
         handled = true;
     }
+    else if (type && strcmp(type, "consumer") == 0)
+    {
+        int usage_value = -1;
+        cJSON *usage = cJSON_GetObjectItem(root, "usage");
+        if (cJSON_IsNumber(usage))
+        {
+            usage_value = (int)cJSON_GetNumberValue(usage);
+        }
+        else
+        {
+            cJSON *usage_low = cJSON_GetObjectItem(root, "usage_low");
+            cJSON *usage_high = cJSON_GetObjectItem(root, "usage_high");
+            if (cJSON_IsNumber(usage_low) && cJSON_IsNumber(usage_high))
+            {
+                int low = (int)cJSON_GetNumberValue(usage_low);
+                int high = (int)cJSON_GetNumberValue(usage_high);
+                usage_value = ((high & 0xFF) << 8) | (low & 0xFF);
+            }
+        }
+        if (usage_value >= 0)
+        {
+            if (usage_value > 0xFFFF)
+                usage_value = 0xFFFF;
+            ble_hid_notify_consumer((uint16_t)usage_value);
+            handled = true;
+        }
+    }
     else if (type && strcmp(type, "config") == 0)
     {
         bridge_toggles_t t = cfg_load_toggles();
